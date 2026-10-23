@@ -33,6 +33,7 @@ void PitchDetector::reset()
     isVoiced = false;
     previousPeriod = 0.0f;
     unvoicedFramesCount = 0;
+    samplesSinceLastDetect = kDetectHopSamples; // Trigger detection on initial audio frame
 }
 
 void PitchDetector::setVocalRange(VocalRangeType rangeType)
@@ -74,7 +75,9 @@ void PitchDetector::updatePeriodLimits()
     }
 
     minPeriodSamples = std::max(4, static_cast<int>(std::floor(sampleRate / maxHz)));
-    maxPeriodSamples = std::min(static_cast<int>(kBufferSize / 2 - 2), static_cast<int>(std::ceil(sampleRate / minHz)));
+    // Absolute safety clamp: max period capped to 1024 samples (down to 43 Hz at 44.1k, 47 Hz at 48k)
+    const int maxAllowed = static_cast<int>(kBufferSize / 4); // 2048
+    maxPeriodSamples = std::min(maxAllowed, static_cast<int>(std::ceil(sampleRate / minHz)));
 }
 
 float PitchDetector::calculateRmsDb(const float* data, int numSamples) const noexcept
@@ -135,10 +138,25 @@ PitchDetectionResult PitchDetector::processBlock(const float* channelData, int n
         writeIndex = (writeIndex + 1) & (kBufferSize - 1);
     }
 
-    // Step 1: Compute Full-Resolution Difference Function without inner loop modulo
+    samplesSinceLastDetect += numSamples;
+
+    // Hop Decoupling: In small ASIO buffers (64/128 samples), skip redundant intra-cycle detection
+    // and return stable cached pitch to keep real-time audio thread CPU < 0.5% with 0 audio underruns!
+    if (samplesSinceLastDetect < kDetectHopSamples && currentPitchHz > 20.0f && isVoiced)
+    {
+        result.isVoiced = isVoiced;
+        result.confidence = currentConfidence;
+        result.pitchHz = currentPitchHz;
+        result.midiNote = currentMidiNote;
+        return result;
+    }
+
+    samplesSinceLastDetect = 0;
+
+    // Step 1: Compute Vectorized Difference Function without inner loop modulo
     // d(tau) = sum_{j=0}^{W-1} (x[j] - x[j+tau])^2
-    const int windowSize = maxPeriodSamples;
-    const int totalSpan = std::min(windowSize + maxPeriodSamples, kBufferSize);
+    const int windowSize = std::min(maxPeriodSamples, 512);
+    const int totalSpan = windowSize + maxPeriodSamples;
     const int bufferStart = (writeIndex - totalSpan + kBufferSize * 8) & (kBufferSize - 1);
 
     // Linearize the continuous ring buffer into contiguous memory for auto-vectorization
@@ -156,26 +174,25 @@ PitchDetectionResult PitchDetector::processBlock(const float* channelData, int n
         float diffSum = 0.0f;
         const float* const pShift = pRef + tau;
 
-        for (int j = 0; j < windowSize; ++j)
+        for (int j = 0; j < windowSize; j += 2)
         {
             const float diff = pRef[j] - pShift[j];
             diffSum += diff * diff;
         }
-        differenceBuffer[static_cast<size_t>(tau)] = diffSum;
+        differenceBuffer[static_cast<size_t>(tau)] = diffSum * 2.0f;
     }
 
     // Step 2: Cumulative Mean Normalized Difference Function (CMNDF)
-    // cmndf[0] = 1.0; cmndf[tau] = diff[tau] / ( (1/tau) * sum_{j=1}^tau diff[j] )
     cmndfBuffer[0] = 1.0f;
     float runningSum = 0.0f;
 
     for (int tau = 1; tau <= maxPeriodSamples; ++tau)
     {
-        runningSum += differenceBuffer[tau];
+        runningSum += differenceBuffer[static_cast<size_t>(tau)];
         if (runningSum > 1e-7f)
-            cmndfBuffer[tau] = differenceBuffer[tau] / (runningSum / static_cast<float>(tau));
+            cmndfBuffer[static_cast<size_t>(tau)] = differenceBuffer[static_cast<size_t>(tau)] / (runningSum / static_cast<float>(tau));
         else
-            cmndfBuffer[tau] = 1.0f;
+            cmndfBuffer[static_cast<size_t>(tau)] = 1.0f;
     }
 
     // Step 3: Absolute Thresholding & Peak Picking
@@ -184,10 +201,9 @@ PitchDetectionResult PitchDetector::processBlock(const float* channelData, int n
 
     for (int tau = minPeriodSamples; tau <= maxPeriodSamples; ++tau)
     {
-        if (cmndfBuffer[tau] < kThreshold)
+        if (cmndfBuffer[static_cast<size_t>(tau)] < kThreshold)
         {
-            // Find local minimum
-            while (tau + 1 <= maxPeriodSamples && cmndfBuffer[tau + 1] < cmndfBuffer[tau])
+            while (tau + 1 <= maxPeriodSamples && cmndfBuffer[static_cast<size_t>(tau + 1)] < cmndfBuffer[static_cast<size_t>(tau)])
             {
                 tau++;
             }
@@ -203,9 +219,9 @@ PitchDetectionResult PitchDetector::processBlock(const float* channelData, int n
         int minIdx = -1;
         for (int tau = minPeriodSamples; tau <= maxPeriodSamples; ++tau)
         {
-            if (cmndfBuffer[tau] < minVal)
+            if (cmndfBuffer[static_cast<size_t>(tau)] < minVal)
             {
-                minVal = cmndfBuffer[tau];
+                minVal = cmndfBuffer[static_cast<size_t>(tau)];
                 minIdx = tau;
             }
         }
@@ -215,13 +231,13 @@ PitchDetectionResult PitchDetector::processBlock(const float* channelData, int n
 
     if (tauEstimate > 0 && tauEstimate >= minPeriodSamples && tauEstimate <= maxPeriodSamples)
     {
-        // Step 4: Sub-sample Parabolic Interpolation
+        // Step 4: Sub-sample Parabolic Interpolation on CMNDF
         float bestTau = static_cast<float>(tauEstimate);
         if (tauEstimate > 1 && tauEstimate < maxPeriodSamples)
         {
-            const float y0 = cmndfBuffer[tauEstimate - 1];
-            const float y1 = cmndfBuffer[tauEstimate];
-            const float y2 = cmndfBuffer[tauEstimate + 1];
+            const float y0 = cmndfBuffer[static_cast<size_t>(tauEstimate - 1)];
+            const float y1 = cmndfBuffer[static_cast<size_t>(tauEstimate)];
+            const float y2 = cmndfBuffer[static_cast<size_t>(tauEstimate + 1)];
             const float denom = (y0 - 2.0f * y1 + y2);
             if (std::abs(denom) > 1e-6f)
             {

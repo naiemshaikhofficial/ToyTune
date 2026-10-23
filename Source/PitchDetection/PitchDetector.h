@@ -71,6 +71,8 @@ private:
     // Octave rejection tracking
     float previousPeriod { 0.0f };
     int unvoicedFramesCount { 0 };
+    int samplesSinceLastDetect { 0 };
+    static constexpr int kDetectHopSamples = 128; // Rapid 128-sample (~2.9ms) update cadence
 
     void updatePeriodLimits();
     float calculateRmsDb(const float* data, int numSamples) const noexcept;
