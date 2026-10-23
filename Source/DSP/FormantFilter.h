@@ -8,9 +8,10 @@ namespace toytune
 {
 
 /**
- * Real-time formant envelope compensator and formant shifter.
- * Counteracts the vocal chipmunk/deepening effect during pitch modification
- * using resonant formant correction biquad stages.
+ * Clean Formant Shifter & Compensation Module.
+ * Period-synchronous time-domain pitch shifting inherently preserves the formant envelope
+ * without requiring comb/phase-modulating filters. This module provides manual formant shifting
+ * (-12 to +12 semitones) when the user explicitly engages it.
  */
 class FormantFilter
 {
@@ -32,51 +33,45 @@ public:
         currentFormantRatio = 1.0f;
     }
 
-    /**
-     * Updates formant compensation based on pitch shift ratio and user formant shift.
-     * @param pitchShiftRatio The ratio of pitch modification (e.g. 1.059 = +1 st).
-     * @param formantShiftSemitones User manual formant shift (-12 to +12 st).
-     * @param formantPreserveEnabled Whether automatic formant envelope preservation is active.
-     */
     void updateParameters(float pitchShiftRatio, float formantShiftSemitones, bool formantPreserveEnabled)
     {
-        // Total desired formant shift ratio
         float targetFormantRatio = 1.0f;
 
-        if (formantPreserveEnabled && pitchShiftRatio > 0.1f)
+        // Manual formant shift takes priority
+        if (std::abs(formantShiftSemitones) > 0.1f)
         {
-            // Invert the pitch shift to keep formant envelope stationary
-            targetFormantRatio = 1.0f / pitchShiftRatio;
+            targetFormantRatio = std::pow(2.0f, formantShiftSemitones / 12.0f);
         }
-
-        // Apply manual formant shift
-        if (std::abs(formantShiftSemitones) > 0.05f)
+        else if (formantPreserveEnabled && (pitchShiftRatio > 1.3f || pitchShiftRatio < 0.75f))
         {
-            targetFormantRatio *= std::pow(2.0f, formantShiftSemitones / 12.0f);
+            // Only apply mild compensation for extreme transpositions (> 4 semitones)
+            targetFormantRatio = juce::jlimit(0.8f, 1.25f, 1.0f / pitchShiftRatio);
         }
 
         targetFormantRatio = juce::jlimit(0.5f, 2.0f, targetFormantRatio);
 
-        // Smooth filter ratio
-        currentFormantRatio = 0.9f * currentFormantRatio + 0.1f * targetFormantRatio;
+        // Smooth filter ratio to prevent stepping
+        currentFormantRatio = 0.95f * currentFormantRatio + 0.05f * targetFormantRatio;
 
-        // Base vocal formant center frequencies: F1 ~ 750 Hz, F2 ~ 1800 Hz
-        const float centerFreq = juce::jlimit(200.0f, static_cast<float>(sampleRate * 0.45), 1400.0f * currentFormantRatio);
-        const float gainDb = (currentFormantRatio - 1.0f) * 6.0f; // Modest boost/cut
+        if (std::abs(currentFormantRatio - 1.0f) > 0.02f)
+        {
+            const float centerFreq = juce::jlimit(200.0f, static_cast<float>(sampleRate * 0.45), 1400.0f * currentFormantRatio);
+            const float gainDb = (currentFormantRatio - 1.0f) * 4.0f;
 
-        auto leftCoeffs = juce::dsp::IIR::Coefficients<float>::makePeakFilter(
-            sampleRate, centerFreq, 1.2f, juce::Decibels::decibelsToGain(gainDb));
-        auto rightCoeffs = juce::dsp::IIR::Coefficients<float>::makePeakFilter(
-            sampleRate, centerFreq, 1.2f, juce::Decibels::decibelsToGain(gainDb));
+            auto leftCoeffs = juce::dsp::IIR::Coefficients<float>::makePeakFilter(
+                sampleRate, centerFreq, 1.0f, juce::Decibels::decibelsToGain(gainDb));
+            auto rightCoeffs = juce::dsp::IIR::Coefficients<float>::makePeakFilter(
+                sampleRate, centerFreq, 1.0f, juce::Decibels::decibelsToGain(gainDb));
 
-        *leftFilter.state = *leftCoeffs;
-        *rightFilter.state = *rightCoeffs;
+            *leftFilter.state = *leftCoeffs;
+            *rightFilter.state = *rightCoeffs;
+        }
     }
 
     void process(juce::AudioBuffer<float>& buffer)
     {
-        if (std::abs(currentFormantRatio - 1.0f) < 0.01f)
-            return; // Neutral bypass
+        if (std::abs(currentFormantRatio - 1.0f) <= 0.02f)
+            return; // 100% clean, transparent bypass
 
         juce::dsp::AudioBlock<float> block(buffer);
         if (buffer.getNumChannels() >= 1)

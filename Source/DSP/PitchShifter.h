@@ -8,11 +8,9 @@ namespace toytune
 {
 
 /**
- * Professional Pitch-Synchronous (PSOLA / Period-Adaptive) real-time pitch shifter.
- * Based on Dr. Andy Hildebrand's foundational Auto-Tune principles (US Patent 5,973,252):
- * Dynamically locks the overlap-add crossfade window to the vocal fundamental period (W = 2 * T0),
- * maintaining constructive phase alignment between glottal pulses and eliminating comb-filtering
- * and chorusing artifacts.
+ * Authentic Pitch-Synchronous Resampling Pitch Shifter (Auto-Tune Architecture).
+ * Uses a single primary resampling trajectory to eliminate flanging/comb filtering,
+ * with pitch-period-locked in-phase synchronous splicing during boundary wraps.
  */
 class PitchShifter
 {
@@ -23,21 +21,10 @@ public:
     void prepare(double sampleRate, int maxBlockSize);
     void reset();
 
-    /**
-     * Sets pitch transposition ratio and fundamental frequency for pitch-synchronous alignment.
-     * @param ratio Multiplicative pitch shift ratio (e.g. 1.05946 for +1 semitone).
-     * @param detectedPitchHz Detected fundamental pitch in Hz (0 if unvoiced).
-     * @param isVoiced Whether current audio frame is voiced vocal.
-     */
     void setPitchRatioAndPitch(float ratio, float detectedPitchHz, bool isVoiced);
-
     void setPitchRatio(float ratio);
     void setLowLatencyMode(bool lowLatency);
 
-    /**
-     * Process audio buffer in-place. Left and right channels share the exact same
-     * pitch-synchronous phase and period modulation to preserve perfect stereo imaging.
-     */
     void process(juce::AudioBuffer<float>& buffer);
 
     int getLatencySamples() const noexcept { return latencySamples; }
@@ -48,22 +35,25 @@ private:
     float smoothedRatio { 1.0f };
 
     bool isVoicedFrame { false };
-    float currentPitchHz { 220.0f };
-    float targetWindowSize { 400.0f };
-    float currentWindowSize { 400.0f };
+    float fundamentalPeriod { 200.0f }; // T0 in samples
 
     bool isLowLatency { false };
-    int latencySamples { 256 };
+    int latencySamples { 1024 };
 
-    CircularBuffer leftDelay;
-    CircularBuffer rightDelay;
+    // High-capacity delay lines for left and right
+    static constexpr int kBufferSize = 32768;
+    std::vector<float> leftBuffer;
+    std::vector<float> rightBuffer;
+    int writePos { 0 };
 
-    // Dual read-head phase pointers [0.0, 1.0)
-    float phase1 { 0.0f };
-    float phase2 { 0.5f };
+    // Spliced Resampling State
+    double primaryReadPos { 0.0 };
+    double secondaryReadPos { 0.0 };
+    bool isCrossfading { false };
+    float xfadeProgress { 1.0f };
+    float xfadeStep { 0.02f };
 
-    void updateWindowConfiguration();
-    static inline float calculateHannWindow(float phase) noexcept;
+    inline float readCubic(const std::vector<float>& buf, double pos) const noexcept;
 };
 
 } // namespace toytune

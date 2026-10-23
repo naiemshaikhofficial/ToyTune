@@ -6,6 +6,7 @@
 #include "../DSP/CorrectionSmoother.h"
 #include "../DSP/PitchShifter.h"
 #include "../DSP/FormantFilter.h"
+#include "../DSP/CircularBuffer.h"
 #include "../DSP/AudioTelemetry.h"
 #include <juce_dsp/juce_dsp.h>
 
@@ -31,6 +32,8 @@ public:
 
         dryBuffer.setSize(2, maxBlockSize);
         monoSumBuffer.setSize(1, maxBlockSize);
+        dryDelayLineL.setSize(8192);
+        dryDelayLineR.setSize(8192);
         reset();
     }
 
@@ -43,6 +46,8 @@ public:
         formantFilter.reset();
         dryBuffer.clear();
         monoSumBuffer.clear();
+        dryDelayLineL.reset();
+        dryDelayLineR.reset();
     }
 
     void processMidi(const juce::MidiBuffer& midiMessages)
@@ -171,17 +176,35 @@ public:
         formantFilter.updateParameters(pitchRatio, formantShiftSt, formantPreserve);
         formantFilter.process(buffer);
 
-        // 7. Dry/Wet Mix
-        const float wetGain = dryWetMixPct / 100.0f;
-        const float dryGain = 1.0f - wetGain;
-
-        for (int ch = 0; ch < numChannels; ++ch)
+        // 7. Dry/Wet Mix with Phase-Aligned Delay Compensation
+        if (dryWetMixPct < 99.5f)
         {
-            auto* outPtr = buffer.getWritePointer(ch);
-            const auto* dryPtr = dryBuffer.getReadPointer(ch);
-            for (int i = 0; i < numSamples; ++i)
+            const float wetGain = dryWetMixPct / 100.0f;
+            const float dryGain = 1.0f - wetGain;
+            const float latency = static_cast<float>(shifter.getLatencySamples());
+
+            for (int ch = 0; ch < numChannels; ++ch)
             {
-                outPtr[i] = (dryPtr[i] * dryGain) + (outPtr[i] * wetGain);
+                auto* outPtr = buffer.getWritePointer(ch);
+                const auto* dryPtr = dryBuffer.getReadPointer(ch);
+                auto& delayLine = (ch == 0) ? dryDelayLineL : dryDelayLineR;
+                for (int i = 0; i < numSamples; ++i)
+                {
+                    delayLine.write(dryPtr[i]);
+                    const float delayedDry = delayLine.readCubic(latency);
+                    outPtr[i] = (delayedDry * dryGain) + (outPtr[i] * wetGain);
+                }
+            }
+        }
+        else
+        {
+            // Pure wet fast path (Mix = 100%)
+            for (int ch = 0; ch < numChannels; ++ch)
+            {
+                const auto* dryPtr = dryBuffer.getReadPointer(ch);
+                auto& delayLine = (ch == 0) ? dryDelayLineL : dryDelayLineR;
+                for (int i = 0; i < numSamples; ++i)
+                    delayLine.write(dryPtr[i]);
             }
         }
 
@@ -201,6 +224,9 @@ private:
     CorrectionSmoother smoother;
     TargetNoteSelector targetSelector;
     FormantFilter formantFilter;
+
+    CircularBuffer dryDelayLineL;
+    CircularBuffer dryDelayLineR;
 
     juce::AudioBuffer<float> dryBuffer;
     juce::AudioBuffer<float> monoSumBuffer;

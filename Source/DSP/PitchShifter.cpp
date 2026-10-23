@@ -7,27 +7,30 @@ namespace toytune
 
 PitchShifter::PitchShifter()
 {
-    leftDelay.setSize(16384);
-    rightDelay.setSize(16384);
+    leftBuffer.assign(kBufferSize, 0.0f);
+    rightBuffer.assign(kBufferSize, 0.0f);
 }
 
 void PitchShifter::prepare(double newSampleRate, int /*maxBlockSize*/)
 {
     sampleRate = (newSampleRate > 1000.0) ? newSampleRate : 44100.0;
-    targetWindowSize = static_cast<float>(sampleRate * (isLowLatency ? 0.012f : 0.020f));
-    currentWindowSize = targetWindowSize;
-    latencySamples = static_cast<int>(currentWindowSize * 0.5f);
+    latencySamples = isLowLatency ? 512 : 1024;
     reset();
 }
 
 void PitchShifter::reset()
 {
-    leftDelay.reset();
-    rightDelay.reset();
-    phase1 = 0.0f;
-    phase2 = 0.5f;
+    std::fill(leftBuffer.begin(), leftBuffer.end(), 0.0f);
+    std::fill(rightBuffer.begin(), rightBuffer.end(), 0.0f);
+    writePos = 0;
+    
+    // Set nominal delay
+    const double initialDelay = static_cast<double>(latencySamples);
+    primaryReadPos = static_cast<double>(kBufferSize) - initialDelay;
+    secondaryReadPos = primaryReadPos;
+    isCrossfading = false;
+    xfadeProgress = 1.0f;
     smoothedRatio = targetRatio;
-    currentWindowSize = targetWindowSize;
 }
 
 void PitchShifter::setPitchRatioAndPitch(float ratio, float detectedPitchHz, bool isVoiced)
@@ -37,18 +40,12 @@ void PitchShifter::setPitchRatioAndPitch(float ratio, float detectedPitchHz, boo
 
     if (isVoiced && detectedPitchHz >= 45.0f && detectedPitchHz <= 1200.0f)
     {
-        currentPitchHz = detectedPitchHz;
-        // Pitch-Synchronous: Window is strictly locked to 2 * fundamental period (2 * T0)
-        const float fundamentalPeriodSamples = static_cast<float>(sampleRate / currentPitchHz);
-        targetWindowSize = juce::jlimit(64.0f, 2048.0f, fundamentalPeriodSamples * 2.0f);
+        fundamentalPeriod = juce::jlimit(30.0f, 1000.0f, static_cast<float>(sampleRate / detectedPitchHz));
     }
     else
     {
-        // Unvoiced default fallback window (~18 ms)
-        targetWindowSize = static_cast<float>(sampleRate * (isLowLatency ? 0.012f : 0.020f));
+        fundamentalPeriod = static_cast<float>(sampleRate / 220.0); // Default ~200 samples
     }
-
-    latencySamples = static_cast<int>(targetWindowSize * 0.5f);
 }
 
 void PitchShifter::setPitchRatio(float ratio)
@@ -61,21 +58,37 @@ void PitchShifter::setLowLatencyMode(bool lowLatency)
     if (isLowLatency != lowLatency)
     {
         isLowLatency = lowLatency;
-        updateWindowConfiguration();
+        latencySamples = isLowLatency ? 512 : 1024;
+        reset();
     }
 }
 
-void PitchShifter::updateWindowConfiguration()
+inline float PitchShifter::readCubic(const std::vector<float>& buf, double pos) const noexcept
 {
-    const float durationSec = isLowLatency ? 0.012f : 0.020f;
-    targetWindowSize = static_cast<float>(sampleRate * durationSec);
-    latencySamples = static_cast<int>(targetWindowSize * 0.5f);
-}
+    while (pos < 0.0)
+        pos += static_cast<double>(kBufferSize);
+    while (pos >= static_cast<double>(kBufferSize))
+        pos -= static_cast<double>(kBufferSize);
 
-inline float PitchShifter::calculateHannWindow(float phase) noexcept
-{
-    // Raised cosine Hann window: 0.5 * (1 - cos(2 * pi * phase))
-    return 0.5f * (1.0f - std::cos(juce::MathConstants<float>::twoPi * phase));
+    const int i1 = static_cast<int>(pos);
+    const float frac = static_cast<float>(pos - static_cast<double>(i1));
+
+    const int i0 = (i1 - 1 + kBufferSize) % kBufferSize;
+    const int i2 = (i1 + 1) % kBufferSize;
+    const int i3 = (i1 + 2) % kBufferSize;
+
+    const float y0 = buf[i0];
+    const float y1 = buf[i1];
+    const float y2 = buf[i2];
+    const float y3 = buf[i3];
+
+    // 4-point Hermite polynomial interpolation
+    const float c0 = y1;
+    const float c1 = 0.5f * (y2 - y0);
+    const float c2 = y0 - 2.5f * y1 + 2.0f * y2 - 0.5f * y3;
+    const float c3 = 0.5f * (y3 - y0) + 1.5f * (y1 - y2);
+
+    return ((c3 * frac + c2) * frac + c1) * frac + c0;
 }
 
 void PitchShifter::process(juce::AudioBuffer<float>& buffer)
@@ -88,60 +101,126 @@ void PitchShifter::process(juce::AudioBuffer<float>& buffer)
     float* leftData = buffer.getWritePointer(0);
     float* rightData = (numChannels > 1) ? buffer.getWritePointer(1) : nullptr;
 
-    const float ratioDeltaPerSample = (targetRatio - smoothedRatio) / static_cast<float>(numSamples);
-    const float windowDeltaPerSample = (targetWindowSize - currentWindowSize) / static_cast<float>(numSamples);
+    const float ratioDelta = (targetRatio - smoothedRatio) / static_cast<float>(numSamples);
+
+    const float T0 = fundamentalPeriod;
+    const double nominalDelay = static_cast<double>(latencySamples);
+    const double minDelay = std::max(64.0, nominalDelay * 0.25);
+    const double maxDelay = nominalDelay * 1.75;
 
     for (int i = 0; i < numSamples; ++i)
     {
-        smoothedRatio += ratioDeltaPerSample;
-        currentWindowSize += windowDeltaPerSample;
+        smoothedRatio += ratioDelta;
 
-        const float safeWindowSize = std::max(64.0f, currentWindowSize);
-
-        // Rate of change of delay: d(delay)/dt = 1 - ratio
-        // When ratio = 1.0 (unvoiced or on-pitch), phaseIncrement = 0 (perfect passthrough)
-        const float phaseIncrement = (1.0f - smoothedRatio) / safeWindowSize;
-
-        phase1 += phaseIncrement;
-        if (phase1 >= 1.0f)
-            phase1 -= 1.0f;
-        else if (phase1 < 0.0f)
-            phase1 += 1.0f;
-
-        phase2 += phaseIncrement;
-        if (phase2 >= 1.0f)
-            phase2 -= 1.0f;
-        else if (phase2 < 0.0f)
-            phase2 += 1.0f;
-
-        // Pitch-synchronous read delays for dual heads
-        const float delay1 = phase1 * safeWindowSize;
-        const float delay2 = phase2 * safeWindowSize;
-
-        // Equal-power Hann crossfade gains
-        const float gain1 = calculateHannWindow(phase1);
-        const float gain2 = calculateHannWindow(phase2);
-
-        const float totalGain = gain1 + gain2;
-        const float norm1 = (totalGain > 1e-4f) ? (gain1 / totalGain) : 0.5f;
-        const float norm2 = (totalGain > 1e-4f) ? (gain2 / totalGain) : 0.5f;
-
-        // Process Left Channel
-        const float inL = leftData[i];
-        leftDelay.write(inL);
-        const float shiftedL = (leftDelay.readCubic(delay1) * norm1) +
-                               (leftDelay.readCubic(delay2) * norm2);
-        leftData[i] = shiftedL;
-
-        // Process Right Channel (stereo phase linked)
+        // 1. Write incoming sample to circular delay buffer
+        leftBuffer[writePos] = leftData[i];
         if (rightData != nullptr)
+            rightBuffer[writePos] = rightData[i];
+
+        // 2. Advance primary read position by the pitch ratio
+        primaryReadPos += static_cast<double>(smoothedRatio);
+        while (primaryReadPos >= static_cast<double>(kBufferSize))
+            primaryReadPos -= static_cast<double>(kBufferSize);
+
+        // Calculate current delay of primary pointer behind write pointer
+        double currentDelay = static_cast<double>(writePos) - primaryReadPos;
+        while (currentDelay < 0.0)
+            currentDelay += static_cast<double>(kBufferSize);
+        while (currentDelay >= static_cast<double>(kBufferSize))
+            currentDelay -= static_cast<double>(kBufferSize);
+
+        // 3. Unvoiced / silence gentle drift back to nominal delay center
+        if (!isCrossfading && (!isVoicedFrame || std::abs(smoothedRatio - 1.0f) < 0.0001f))
         {
-            const float inR = rightData[i];
-            rightDelay.write(inR);
-            const float shiftedR = (rightDelay.readCubic(delay1) * norm1) +
-                                   (rightDelay.readCubic(delay2) * norm2);
-            rightData[i] = shiftedR;
+            const double delayDiff = nominalDelay - currentDelay;
+            if (std::abs(delayDiff) > 2.0)
+            {
+                // Nudge by 0.0005 samples per audio sample (completely inaudible)
+                const double nudge = (delayDiff > 0.0) ? -0.0005 : 0.0005;
+                primaryReadPos += nudge;
+            }
         }
+
+        // 4. Check for boundary wrap and initiate seamless in-phase splice crossfade
+        if (!isCrossfading && std::abs(smoothedRatio - 1.0f) > 0.0001f)
+        {
+            if (currentDelay < minDelay)
+            {
+                // Reading too fast (pitching UP) -> Jump back by exactly integer periods (k * T0)
+                const double delta = nominalDelay - currentDelay;
+                const int periods = std::max(1, static_cast<int>(std::round(delta / static_cast<double>(T0))));
+                const double safeJump = static_cast<double>(periods) * static_cast<double>(T0);
+
+                secondaryReadPos = primaryReadPos - safeJump;
+                while (secondaryReadPos < 0.0)
+                    secondaryReadPos += static_cast<double>(kBufferSize);
+
+                isCrossfading = true;
+                xfadeProgress = 0.0f;
+                // Crossfade over 1 pitch period (clamped 32 to 256 samples)
+                const float xfadeSamples = juce::jlimit(32.0f, 256.0f, T0);
+                xfadeStep = 1.0f / xfadeSamples;
+            }
+            else if (currentDelay > maxDelay)
+            {
+                // Reading too slow (pitching DOWN) -> Jump forward by integer periods (k * T0)
+                const double delta = currentDelay - nominalDelay;
+                const int periods = std::max(1, static_cast<int>(std::round(delta / static_cast<double>(T0))));
+                const double safeJump = static_cast<double>(periods) * static_cast<double>(T0);
+
+                secondaryReadPos = primaryReadPos + safeJump;
+                while (secondaryReadPos >= static_cast<double>(kBufferSize))
+                    secondaryReadPos -= static_cast<double>(kBufferSize);
+
+                isCrossfading = true;
+                xfadeProgress = 0.0f;
+                const float xfadeSamples = juce::jlimit(32.0f, 256.0f, T0);
+                xfadeStep = 1.0f / xfadeSamples;
+            }
+        }
+
+        // 4. Synthesize Output Sample
+        if (!isCrossfading)
+        {
+            // SINGLE POINTER ACTIVE: 100% Pure Vocal, ZERO Flanging/Comb-filtering!
+            leftData[i] = readCubic(leftBuffer, primaryReadPos);
+            if (rightData != nullptr)
+                rightData[i] = readCubic(rightBuffer, primaryReadPos);
+        }
+        else
+        {
+            // Brief in-phase splice crossfade
+            secondaryReadPos += static_cast<double>(smoothedRatio);
+            while (secondaryReadPos >= static_cast<double>(kBufferSize))
+                secondaryReadPos -= static_cast<double>(kBufferSize);
+
+            xfadeProgress += xfadeStep;
+
+            // Equal-power / Hann crossfade across identical pitch phase
+            const float fadeNorm = juce::jlimit(0.0f, 1.0f, xfadeProgress);
+            const float wOld = 0.5f * (1.0f + std::cos(juce::MathConstants<float>::pi * fadeNorm));
+            const float wNew = 1.0f - wOld;
+
+            const float s1L = readCubic(leftBuffer, primaryReadPos);
+            const float s2L = readCubic(leftBuffer, secondaryReadPos);
+            leftData[i] = (s1L * wOld) + (s2L * wNew);
+
+            if (rightData != nullptr)
+            {
+                const float s1R = readCubic(rightBuffer, primaryReadPos);
+                const float s2R = readCubic(rightBuffer, secondaryReadPos);
+                rightData[i] = (s1R * wOld) + (s2R * wNew);
+            }
+
+            if (xfadeProgress >= 1.0f)
+            {
+                // Crossfade finished: secondary pointer becomes the sole active pointer
+                isCrossfading = false;
+                primaryReadPos = secondaryReadPos;
+            }
+        }
+
+        writePos = (writePos + 1) % kBufferSize;
     }
 }
 
