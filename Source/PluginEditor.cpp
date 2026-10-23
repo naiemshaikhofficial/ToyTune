@@ -144,109 +144,45 @@ void ToyTuneAudioProcessorEditor::paint(juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
 
-    // 1. Overall Dark Luxury Matte Background with Cyber Vignette
-    juce::ColourGradient bgGrad(juce::Colour(0xff0d0e12), bounds.getCentreX(), bounds.getY(),
-                                juce::Colour(0xff060709), bounds.getCentreX(), bounds.getBottom(), false);
+    // 1. Overall Dark Luxury Matte Background
+    juce::ColourGradient bgGrad(juce::Colour(0xff0d0e11), bounds.getCentreX(), bounds.getY(),
+                                juce::Colour(0xff07080a), bounds.getCentreX(), bounds.getBottom(), false);
     g.setGradientFill(bgGrad);
     g.fillRoundedRectangle(bounds, 12.0f);
 
-    // Outer Aerospace Machined Rim
-    g.setColour(juce::Colour(0xff22242d));
-    g.drawRoundedRectangle(bounds, 12.0f, 1.6f);
+    // Subtle outer metallic chassis rim
+    g.setColour(juce::Colour(0xff1e2027));
+    g.drawRoundedRectangle(bounds, 12.0f, 1.5f);
 
-    // 2. Corner CNC Hex Bolts (Aerospace Hardware Fasteners)
-    auto drawHexBolt = [&g](float bx, float by)
-    {
-        // Recessed circular counterbore
-        g.setColour(juce::Colour(0xff090a0d));
-        g.fillEllipse(bx - 6.0f, by - 6.0f, 12.0f, 12.0f);
-        g.setColour(juce::Colour(0xff252732));
-        g.drawEllipse(bx - 6.0f, by - 6.0f, 12.0f, 12.0f, 1.0f);
-
-        // Hexagon bolt head
-        juce::Path hex;
-        for (int i = 0; i < 6; ++i)
-        {
-            const float a = static_cast<float>(i) * (juce::MathConstants<float>::pi / 3.0f);
-            const float x = bx + std::cos(a) * 3.6f;
-            const float y = by + std::sin(a) * 3.6f;
-            if (i == 0) hex.startNewSubPath(x, y);
-            else        hex.lineTo(x, y);
-        }
-        hex.closeSubPath();
-        g.setColour(juce::Colour(0xff323540));
-        g.fillPath(hex);
-        g.setColour(juce::Colour(0x50ffffff));
-        g.strokePath(hex, juce::PathStrokeType(0.8f));
-    };
-
-    drawHexBolt(18.0f, 18.0f);
-    drawHexBolt(bounds.getRight() - 18.0f, 18.0f);
-    drawHexBolt(18.0f, bounds.getBottom() - 18.0f);
-    drawHexBolt(bounds.getRight() - 18.0f, bounds.getBottom() - 18.0f);
-
-    // 3. Laser Hairline Guide Separators
-    g.setColour(juce::Colour(0x18ffffff));
-    g.drawHorizontalLine(57, 44.0f, bounds.getRight() - 44.0f);
-    g.drawHorizontalLine(120, 44.0f, bounds.getRight() - 44.0f);
-    g.drawHorizontalLine(422, 44.0f, bounds.getRight() - 44.0f);
-
-    // 4. Angled Ventilation Grip Ridges on Left and Right Chassis Margins
-    g.setColour(juce::Colour(0x35ffffff));
+    // 2. Angled Ventilation Grip Ridges on Left and Right Chassis Margins
+    // Upper Grip Lines (Next to Retune Speed and Humanize cards)
+    g.setColour(juce::Colour(0x30ffffff));
     const float gripStartX_L = bounds.getX() + 20.0f;
     const float gripStartX_R = bounds.getRight() - 20.0f;
 
     for (int i = 0; i < 5; ++i)
     {
         const float y = 220.0f + static_cast<float>(i) * 12.0f;
-        // Left angled vents with depth shadow
-        g.setColour(juce::Colour(0x20000000));
-        g.drawLine(gripStartX_L - 8.0f, y + 11.0f, gripStartX_L + 2.0f, y - 1.0f, 2.6f);
-        g.setColour(juce::Colour(0x35ffffff));
-        g.drawLine(gripStartX_L - 8.0f, y + 10.0f, gripStartX_L + 2.0f, y - 2.0f, 1.8f);
-
+        // Left angled vents
+        g.drawLine(gripStartX_L - 8.0f, y + 10.0f, gripStartX_L + 2.0f, y - 2.0f, 2.2f);
         // Right angled vents
-        g.setColour(juce::Colour(0x20000000));
-        g.drawLine(gripStartX_R - 2.0f, y + 11.0f, gripStartX_R + 8.0f, y - 1.0f, 2.6f);
-        g.setColour(juce::Colour(0x35ffffff));
-        g.drawLine(gripStartX_R - 2.0f, y + 10.0f, gripStartX_R + 8.0f, y - 2.0f, 1.8f);
+        g.drawLine(gripStartX_R - 2.0f, y + 10.0f, gripStartX_R + 8.0f, y - 2.0f, 2.2f);
     }
 
     // Lower Grip Lines (Next to Bottom Shelf)
     for (int i = 0; i < 4; ++i)
     {
         const float y = 525.0f + static_cast<float>(i) * 12.0f;
-        g.setColour(juce::Colour(0x35ffffff));
-        g.drawLine(gripStartX_L - 8.0f, y + 10.0f, gripStartX_L + 2.0f, y - 2.0f, 1.8f);
-        g.drawLine(gripStartX_R - 2.0f, y + 10.0f, gripStartX_R + 8.0f, y - 2.0f, 1.8f);
+        g.drawLine(gripStartX_L - 8.0f, y + 10.0f, gripStartX_L + 2.0f, y - 2.0f, 2.2f);
+        g.drawLine(gripStartX_R - 2.0f, y + 10.0f, gripStartX_R + 8.0f, y - 2.0f, 2.2f);
     }
 
-    // 5. Bottom Control Shelf Background Card with Laser Machined Bezel
+    // 3. Bottom Control Shelf Background Card
     const auto shelfRect = bottomShelfBounds.toFloat();
-    g.setColour(juce::Colour(0xff101115));
-    g.fillRoundedRectangle(shelfRect, 10.0f);
-    g.setColour(juce::Colour(0xff22252e));
-    g.drawRoundedRectangle(shelfRect, 10.0f, 1.2f);
-
-    // Stenciled Technical Stencil Label on Bottom Shelf
-    g.setFont(juce::Font(juce::FontOptions(8.5f).withStyle("Bold")));
-    g.setColour(juce::Colour(0xff555866));
-    g.drawText("QUANTUM  PITCH  PROCESSING  RACK  //  MODEL  TT-01",
-               static_cast<int>(shelfRect.getX() + 24.0f),
-               static_cast<int>(shelfRect.getY() + 8.0f),
-               320, 12, juce::Justification::centredLeft, false);
-
-    // Status Armed LED indicator
-    g.setColour(juce::Colour(0x40ffffff));
-    g.fillEllipse(shelfRect.getRight() - 142.0f, shelfRect.getY() + 11.0f, 6.0f, 6.0f);
-    g.setColour(juce::Colour(0xffffffff));
-    g.fillEllipse(shelfRect.getRight() - 141.0f, shelfRect.getY() + 12.0f, 4.0f, 4.0f);
-
-    g.setColour(juce::Colour(0xff8a8d9a));
-    g.drawText("SYS: ARMED // 48kHz",
-               static_cast<int>(shelfRect.getRight() - 130.0f),
-               static_cast<int>(shelfRect.getY() + 8.0f),
-               110, 12, juce::Justification::centredLeft, false);
+    g.setColour(juce::Colour(0xff101114));
+    g.fillRoundedRectangle(shelfRect, 12.0f);
+    g.setColour(juce::Colour(0xff1e2027));
+    g.drawRoundedRectangle(shelfRect, 12.0f, 1.2f);
 }
 
 void ToyTuneAudioProcessorEditor::resized()
