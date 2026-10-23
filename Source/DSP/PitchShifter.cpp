@@ -146,14 +146,37 @@ void PitchShifter::process(juce::AudioBuffer<float>& buffer)
         {
             if (currentDelay < minDelay)
             {
-                // Reading too fast (pitching UP) -> Jump back by exactly integer periods (k * T0)
+                // Reading too fast (pitching UP) -> Jump back by integer periods (k * T0)
                 const double delta = nominalDelay - currentDelay;
                 const int periods = std::max(1, static_cast<int>(std::round(delta / static_cast<double>(T0))));
                 const double safeJump = static_cast<double>(periods) * static_cast<double>(T0);
 
-                secondaryReadPos = primaryReadPos - safeJump;
+                double targetPos = primaryReadPos - safeJump;
+                while (targetPos < 0.0)
+                    targetPos += static_cast<double>(kBufferSize);
+
+                // Phase Micro-Locking: search +/- 4 samples to align with exact acoustic wave crest
+                double bestOffset = 0.0;
+                float maxCorr = -1e9f;
+                const float refSample = readCubic(leftBuffer, primaryReadPos);
+
+                for (int d = -4; d <= 4; ++d)
+                {
+                    const double testPos = targetPos + static_cast<double>(d);
+                    const float testSample = readCubic(leftBuffer, testPos);
+                    const float corr = refSample * testSample;
+                    if (corr > maxCorr)
+                    {
+                        maxCorr = corr;
+                        bestOffset = static_cast<double>(d);
+                    }
+                }
+
+                secondaryReadPos = targetPos + bestOffset;
                 while (secondaryReadPos < 0.0)
                     secondaryReadPos += static_cast<double>(kBufferSize);
+                while (secondaryReadPos >= static_cast<double>(kBufferSize))
+                    secondaryReadPos -= static_cast<double>(kBufferSize);
 
                 isCrossfading = true;
                 xfadeProgress = 0.0f;
@@ -168,7 +191,30 @@ void PitchShifter::process(juce::AudioBuffer<float>& buffer)
                 const int periods = std::max(1, static_cast<int>(std::round(delta / static_cast<double>(T0))));
                 const double safeJump = static_cast<double>(periods) * static_cast<double>(T0);
 
-                secondaryReadPos = primaryReadPos + safeJump;
+                double targetPos = primaryReadPos + safeJump;
+                while (targetPos >= static_cast<double>(kBufferSize))
+                    targetPos -= static_cast<double>(kBufferSize);
+
+                // Phase Micro-Locking: search +/- 4 samples
+                double bestOffset = 0.0;
+                float maxCorr = -1e9f;
+                const float refSample = readCubic(leftBuffer, primaryReadPos);
+
+                for (int d = -4; d <= 4; ++d)
+                {
+                    const double testPos = targetPos + static_cast<double>(d);
+                    const float testSample = readCubic(leftBuffer, testPos);
+                    const float corr = refSample * testSample;
+                    if (corr > maxCorr)
+                    {
+                        maxCorr = corr;
+                        bestOffset = static_cast<double>(d);
+                    }
+                }
+
+                secondaryReadPos = targetPos + bestOffset;
+                while (secondaryReadPos < 0.0)
+                    secondaryReadPos += static_cast<double>(kBufferSize);
                 while (secondaryReadPos >= static_cast<double>(kBufferSize))
                     secondaryReadPos -= static_cast<double>(kBufferSize);
 

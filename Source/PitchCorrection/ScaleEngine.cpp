@@ -120,8 +120,17 @@ void ScaleEngine::updateScaleMask()
     for (int interval : intervals)
     {
         const int pitchClass = (rootNote + interval) % 12;
-        currentScaleMask[pitchClass] = true;
+        currentScaleMask[pitchClass] = customMask[pitchClass];
     }
+
+    // Ensure at least one note remains active
+    bool anyActive = false;
+    for (bool b : currentScaleMask)
+    {
+        if (b) { anyActive = true; break; }
+    }
+    if (!anyActive)
+        currentScaleMask[rootNote] = true;
 }
 
 TargetPitchResult ScaleEngine::calculateTarget(float inputMidiNote) const

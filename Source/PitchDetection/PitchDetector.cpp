@@ -243,19 +243,23 @@ PitchDetectionResult PitchDetector::processBlock(const float* channelData, int n
         const float dipVal = cmndfBuffer[tauEstimate];
         const float rawConfidence = juce::jlimit(0.0f, 1.0f, 1.0f - dipVal);
 
-        // Temporal smoothing
-        if (!isVoiced || unvoicedFramesCount > 2)
+        // Adaptive Fast-Attack Temporal Tracking:
+        // When a singer changes notes (> 5% frequency change) or attacks with high confidence,
+        // snap instantly so Retune Speed = 0 ms is truly instantaneous!
+        // Only apply gentle stabilization on steady held notes (< 5% change) to eliminate sub-cent jitter.
+        const float pitchDiffRatio = (currentPitchHz > 10.0f) ? std::abs(rawPitchHz - currentPitchHz) / currentPitchHz : 1.0f;
+        if (!isVoiced || unvoicedFramesCount > 1 || rawConfidence > 0.80f || pitchDiffRatio > 0.05f)
         {
             currentPitchHz = rawPitchHz;
             currentConfidence = rawConfidence;
         }
         else
         {
-            currentPitchHz = 0.7f * currentPitchHz + 0.3f * rawPitchHz;
-            currentConfidence = 0.8f * currentConfidence + 0.2f * rawConfidence;
+            currentPitchHz = 0.25f * currentPitchHz + 0.75f * rawPitchHz;
+            currentConfidence = 0.3f * currentConfidence + 0.7f * rawConfidence;
         }
 
-        isVoiced = (currentConfidence >= 0.55f);
+        isVoiced = (currentConfidence >= 0.50f);
         unvoicedFramesCount = 0;
         currentMidiNote = frequencyToMidi(currentPitchHz);
     }

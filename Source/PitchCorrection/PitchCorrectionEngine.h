@@ -122,58 +122,70 @@ public:
             monoSumBuffer.applyGain(0.5f);
         }
 
-        // 2. Fundamental Frequency Detection
+        // 2. High-Temporal Precision Pitch Tracking & Resampling (Max 128 samples per hop)
         detector.setVocalRange(vocalRange);
         detector.setReferencePitch(refPitchHz);
-        const auto detectResult = detector.processBlock(monoSumBuffer.getReadPointer(0), numSamples);
 
-        telemetry.detectedPitchHz.store(detectResult.pitchHz, std::memory_order_relaxed);
-        telemetry.detectedMidiNote.store(detectResult.midiNote, std::memory_order_relaxed);
-        telemetry.pitchConfidence.store(detectResult.confidence, std::memory_order_relaxed);
-        telemetry.isVoiced.store(detectResult.isVoiced, std::memory_order_relaxed);
+        constexpr int kMaxHop = 128;
+        int sampleOffset = 0;
+        float currentRatio = 1.0f;
 
-        // 3. Musical Target Selection
-        float pitchRatio = 1.0f;
-        float centsDev = 0.0f;
-
-        if (detectResult.isVoiced && detectResult.pitchHz > 20.0f)
+        while (sampleOffset < numSamples)
         {
-            const auto target = targetSelector.resolveTarget(scaleEngine, detectResult.midiNote);
-            centsDev = target.centsDeviation;
+            const int hop = std::min(kMaxHop, numSamples - sampleOffset);
 
-            telemetry.targetMidiNote.store(target.targetMidiNote, std::memory_order_relaxed);
-            telemetry.targetPitchHz.store(target.targetFreqHz, std::memory_order_relaxed);
-            telemetry.centsDeviation.store(centsDev, std::memory_order_relaxed);
+            // Fundamental Frequency Detection on current slice
+            const auto detectResult = detector.processBlock(monoSumBuffer.getReadPointer(0) + sampleOffset, hop);
 
-            // 4. Correction Smoothing
-            pitchRatio = smoother.processBlock(centsDev,
-                                               retuneSpeedMs,
-                                               strengthPct,
-                                               toleranceCents,
-                                               humanizePct,
-                                               flexTunePct,
-                                               vibratoPreservePct,
-                                               tuningMode,
-                                               numSamples);
+            telemetry.detectedPitchHz.store(detectResult.pitchHz, std::memory_order_relaxed);
+            telemetry.detectedMidiNote.store(detectResult.midiNote, std::memory_order_relaxed);
+            telemetry.pitchConfidence.store(detectResult.confidence, std::memory_order_relaxed);
+            telemetry.isVoiced.store(detectResult.isVoiced, std::memory_order_relaxed);
 
-            telemetry.pushHistoryPoint(detectResult.pitchHz, target.targetFreqHz);
+            float pitchRatio = 1.0f;
+            float centsDev = 0.0f;
+
+            if (detectResult.isVoiced && detectResult.pitchHz > 20.0f)
+            {
+                const auto target = targetSelector.resolveTarget(scaleEngine, detectResult.midiNote);
+                centsDev = target.centsDeviation;
+
+                telemetry.targetMidiNote.store(target.targetMidiNote, std::memory_order_relaxed);
+                telemetry.targetPitchHz.store(target.targetFreqHz, std::memory_order_relaxed);
+                telemetry.centsDeviation.store(centsDev, std::memory_order_relaxed);
+
+                pitchRatio = smoother.processBlock(centsDev,
+                                                   retuneSpeedMs,
+                                                   strengthPct,
+                                                   toleranceCents,
+                                                   humanizePct,
+                                                   flexTunePct,
+                                                   vibratoPreservePct,
+                                                   tuningMode,
+                                                   hop);
+
+                telemetry.pushHistoryPoint(detectResult.pitchHz, target.targetFreqHz);
+            }
+            else
+            {
+                pitchRatio = 1.0f;
+                telemetry.centsDeviation.store(0.0f, std::memory_order_relaxed);
+                telemetry.pushHistoryPoint(0.0f, 0.0f);
+            }
+
+            currentRatio = pitchRatio;
+            telemetry.currentRetuneRatio.store(pitchRatio, std::memory_order_relaxed);
+
+            // Process intonation shift on this sub-hop slice
+            juce::AudioBuffer<float> subBuffer(buffer.getArrayOfWritePointers(), numChannels, sampleOffset, hop);
+            shifter.setPitchRatioAndPitch(pitchRatio, detectResult.pitchHz, detectResult.isVoiced);
+            shifter.process(subBuffer);
+
+            sampleOffset += hop;
         }
-        else
-        {
-            // Unvoiced / silence: natural unity pass
-            pitchRatio = 1.0f;
-            telemetry.centsDeviation.store(0.0f, std::memory_order_relaxed);
-            telemetry.pushHistoryPoint(0.0f, 0.0f);
-        }
-
-        telemetry.currentRetuneRatio.store(pitchRatio, std::memory_order_relaxed);
-
-        // 5. Real-Time Pitch-Synchronous Intonation Shifter
-        shifter.setPitchRatioAndPitch(pitchRatio, detectResult.pitchHz, detectResult.isVoiced);
-        shifter.process(buffer);
 
         // 6. Formant Filter
-        formantFilter.updateParameters(pitchRatio, formantShiftSt, formantPreserve);
+        formantFilter.updateParameters(currentRatio, formantShiftSt, formantPreserve);
         formantFilter.process(buffer);
 
         // 7. Dry/Wet Mix with Phase-Aligned Delay Compensation
