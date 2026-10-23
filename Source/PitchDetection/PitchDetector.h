@@ -61,6 +61,7 @@ private:
     // Work buffers pre-allocated to avoid audio-thread heap allocation
     std::vector<float> differenceBuffer;
     std::vector<float> cmndfBuffer;
+    std::vector<float> linearBuffer;
 
     float currentPitchHz { 0.0f };
     float currentMidiNote { 0.0f };

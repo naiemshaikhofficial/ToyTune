@@ -10,6 +10,7 @@ PitchDetector::PitchDetector()
     inputBuffer.resize(kBufferSize, 0.0f);
     differenceBuffer.resize(kBufferSize / 2, 0.0f);
     cmndfBuffer.resize(kBufferSize / 2, 0.0f);
+    linearBuffer.resize(kBufferSize, 0.0f);
 }
 
 void PitchDetector::prepare(double newSampleRate, int /*maxBlockSize*/)
@@ -24,6 +25,7 @@ void PitchDetector::reset()
     std::fill(inputBuffer.begin(), inputBuffer.end(), 0.0f);
     std::fill(differenceBuffer.begin(), differenceBuffer.end(), 0.0f);
     std::fill(cmndfBuffer.begin(), cmndfBuffer.end(), 0.0f);
+    std::fill(linearBuffer.begin(), linearBuffer.end(), 0.0f);
     writeIndex = 0;
     currentPitchHz = 0.0f;
     currentMidiNote = 0.0f;
@@ -133,23 +135,32 @@ PitchDetectionResult PitchDetector::processBlock(const float* channelData, int n
         writeIndex = (writeIndex + 1) % kBufferSize;
     }
 
-    // Step 1: Compute Difference Function
+    // Step 1: Compute Full-Resolution Difference Function without inner loop modulo
     // d(tau) = sum_{j=0}^{W-1} (x[j] - x[j+tau])^2
     const int windowSize = maxPeriodSamples;
-    const int bufferStart = (writeIndex - windowSize - maxPeriodSamples + kBufferSize * 2) % kBufferSize;
+    const int totalSpan = windowSize + maxPeriodSamples;
+    const int bufferStart = (writeIndex - totalSpan + kBufferSize * 4) % kBufferSize;
+
+    // Linearize the continuous ring buffer into contiguous memory for auto-vectorization
+    for (int j = 0; j < totalSpan; ++j)
+    {
+        linearBuffer[static_cast<size_t>(j)] = inputBuffer[static_cast<size_t>((bufferStart + j) % kBufferSize)];
+    }
 
     differenceBuffer[0] = 0.0f;
+    const float* const pRef = linearBuffer.data();
+
     for (int tau = 1; tau <= maxPeriodSamples; ++tau)
     {
         float diffSum = 0.0f;
-        for (int j = 0; j < windowSize; j += 2) // Step 2 for high performance
+        const float* const pShift = pRef + tau;
+
+        for (int j = 0; j < windowSize; ++j)
         {
-            const int idx1 = (bufferStart + j) % kBufferSize;
-            const int idx2 = (bufferStart + j + tau) % kBufferSize;
-            const float diff = inputBuffer[idx1] - inputBuffer[idx2];
+            const float diff = pRef[j] - pShift[j];
             diffSum += diff * diff;
         }
-        differenceBuffer[tau] = diffSum * 2.0f; // Scale back for stride
+        differenceBuffer[static_cast<size_t>(tau)] = diffSum;
     }
 
     // Step 2: Cumulative Mean Normalized Difference Function (CMNDF)
