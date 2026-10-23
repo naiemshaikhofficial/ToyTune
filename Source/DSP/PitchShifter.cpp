@@ -1,19 +1,22 @@
 #include "PitchShifter.h"
 #include <cmath>
+#include <algorithm>
 
 namespace toytune
 {
 
 PitchShifter::PitchShifter()
 {
-    leftDelay.setSize(8192);
-    rightDelay.setSize(8192);
+    leftDelay.setSize(16384);
+    rightDelay.setSize(16384);
 }
 
 void PitchShifter::prepare(double newSampleRate, int /*maxBlockSize*/)
 {
     sampleRate = (newSampleRate > 1000.0) ? newSampleRate : 44100.0;
-    updateWindowConfiguration();
+    targetWindowSize = static_cast<float>(sampleRate * (isLowLatency ? 0.012f : 0.020f));
+    currentWindowSize = targetWindowSize;
+    latencySamples = static_cast<int>(currentWindowSize * 0.5f);
     reset();
 }
 
@@ -24,6 +27,28 @@ void PitchShifter::reset()
     phase1 = 0.0f;
     phase2 = 0.5f;
     smoothedRatio = targetRatio;
+    currentWindowSize = targetWindowSize;
+}
+
+void PitchShifter::setPitchRatioAndPitch(float ratio, float detectedPitchHz, bool isVoiced)
+{
+    targetRatio = juce::jlimit(0.25f, 4.0f, ratio);
+    isVoicedFrame = isVoiced;
+
+    if (isVoiced && detectedPitchHz >= 45.0f && detectedPitchHz <= 1200.0f)
+    {
+        currentPitchHz = detectedPitchHz;
+        // Pitch-Synchronous: Window is strictly locked to 2 * fundamental period (2 * T0)
+        const float fundamentalPeriodSamples = static_cast<float>(sampleRate / currentPitchHz);
+        targetWindowSize = juce::jlimit(64.0f, 2048.0f, fundamentalPeriodSamples * 2.0f);
+    }
+    else
+    {
+        // Unvoiced default fallback window (~18 ms)
+        targetWindowSize = static_cast<float>(sampleRate * (isLowLatency ? 0.012f : 0.020f));
+    }
+
+    latencySamples = static_cast<int>(targetWindowSize * 0.5f);
 }
 
 void PitchShifter::setPitchRatio(float ratio)
@@ -42,16 +67,14 @@ void PitchShifter::setLowLatencyMode(bool lowLatency)
 
 void PitchShifter::updateWindowConfiguration()
 {
-    // High Quality: ~35 ms window; Low Latency: ~18 ms window
-    const float windowDurationSec = isLowLatency ? 0.018f : 0.035f;
-    windowSize = static_cast<int>(sampleRate * windowDurationSec);
-    windowSize = juce::jlimit(256, 4096, (windowSize / 2) * 2); // Make even
-    latencySamples = windowSize / 2;
+    const float durationSec = isLowLatency ? 0.012f : 0.020f;
+    targetWindowSize = static_cast<float>(sampleRate * durationSec);
+    latencySamples = static_cast<int>(targetWindowSize * 0.5f);
 }
 
 inline float PitchShifter::calculateHannWindow(float phase) noexcept
 {
-    // Raised cosine / Hann window: 0.5 * (1 - cos(2 * pi * phase))
+    // Raised cosine Hann window: 0.5 * (1 - cos(2 * pi * phase))
     return 0.5f * (1.0f - std::cos(juce::MathConstants<float>::twoPi * phase));
 }
 
@@ -65,16 +88,19 @@ void PitchShifter::process(juce::AudioBuffer<float>& buffer)
     float* leftData = buffer.getWritePointer(0);
     float* rightData = (numChannels > 1) ? buffer.getWritePointer(1) : nullptr;
 
-    const float windowSizeFloat = static_cast<float>(windowSize);
     const float ratioDeltaPerSample = (targetRatio - smoothedRatio) / static_cast<float>(numSamples);
+    const float windowDeltaPerSample = (targetWindowSize - currentWindowSize) / static_cast<float>(numSamples);
 
     for (int i = 0; i < numSamples; ++i)
     {
         smoothedRatio += ratioDeltaPerSample;
+        currentWindowSize += windowDeltaPerSample;
+
+        const float safeWindowSize = std::max(64.0f, currentWindowSize);
 
         // Rate of change of delay: d(delay)/dt = 1 - ratio
-        // Frequency shift rate per sample:
-        const float phaseIncrement = (1.0f - smoothedRatio) / windowSizeFloat;
+        // When ratio = 1.0 (unvoiced or on-pitch), phaseIncrement = 0 (perfect passthrough)
+        const float phaseIncrement = (1.0f - smoothedRatio) / safeWindowSize;
 
         phase1 += phaseIncrement;
         if (phase1 >= 1.0f)
@@ -88,15 +114,14 @@ void PitchShifter::process(juce::AudioBuffer<float>& buffer)
         else if (phase2 < 0.0f)
             phase2 += 1.0f;
 
-        // Current delay in samples for each read head
-        const float delay1 = phase1 * windowSizeFloat;
-        const float delay2 = phase2 * windowSizeFloat;
+        // Pitch-synchronous read delays for dual heads
+        const float delay1 = phase1 * safeWindowSize;
+        const float delay2 = phase2 * safeWindowSize;
 
-        // Crossfade gains
+        // Equal-power Hann crossfade gains
         const float gain1 = calculateHannWindow(phase1);
         const float gain2 = calculateHannWindow(phase2);
 
-        // Normalize sum of squares / linear window sum
         const float totalGain = gain1 + gain2;
         const float norm1 = (totalGain > 1e-4f) ? (gain1 / totalGain) : 0.5f;
         const float norm2 = (totalGain > 1e-4f) ? (gain2 / totalGain) : 0.5f;

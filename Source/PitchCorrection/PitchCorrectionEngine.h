@@ -163,8 +163,8 @@ public:
 
         telemetry.currentRetuneRatio.store(pitchRatio, std::memory_order_relaxed);
 
-        // 5. Real-Time Pitch Shifting
-        shifter.setPitchRatio(pitchRatio);
+        // 5. Real-Time Pitch-Synchronous Intonation Shifter
+        shifter.setPitchRatioAndPitch(pitchRatio, detectResult.pitchHz, detectResult.isVoiced);
         shifter.process(buffer);
 
         // 6. Formant Filter

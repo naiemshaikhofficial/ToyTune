@@ -8,8 +8,11 @@ namespace toytune
 {
 
 /**
- * Real-time stereo phase-locked pitch shifter using dual synchronized read heads
- * with smooth Hann crossfading and cubic fractional delay interpolation.
+ * Professional Pitch-Synchronous (PSOLA / Period-Adaptive) real-time pitch shifter.
+ * Based on Dr. Andy Hildebrand's foundational Auto-Tune principles (US Patent 5,973,252):
+ * Dynamically locks the overlap-add crossfade window to the vocal fundamental period (W = 2 * T0),
+ * maintaining constructive phase alignment between glottal pulses and eliminating comb-filtering
+ * and chorusing artifacts.
  */
 class PitchShifter
 {
@@ -20,12 +23,20 @@ public:
     void prepare(double sampleRate, int maxBlockSize);
     void reset();
 
+    /**
+     * Sets pitch transposition ratio and fundamental frequency for pitch-synchronous alignment.
+     * @param ratio Multiplicative pitch shift ratio (e.g. 1.05946 for +1 semitone).
+     * @param detectedPitchHz Detected fundamental pitch in Hz (0 if unvoiced).
+     * @param isVoiced Whether current audio frame is voiced vocal.
+     */
+    void setPitchRatioAndPitch(float ratio, float detectedPitchHz, bool isVoiced);
+
     void setPitchRatio(float ratio);
     void setLowLatencyMode(bool lowLatency);
 
     /**
-     * Process audio buffer in-place. Left and right channels share the same
-     * pitch transposition ratio and crossfade phases to preserve stereo imaging.
+     * Process audio buffer in-place. Left and right channels share the exact same
+     * pitch-synchronous phase and period modulation to preserve perfect stereo imaging.
      */
     void process(juce::AudioBuffer<float>& buffer);
 
@@ -36,9 +47,13 @@ private:
     float targetRatio { 1.0f };
     float smoothedRatio { 1.0f };
 
+    bool isVoicedFrame { false };
+    float currentPitchHz { 220.0f };
+    float targetWindowSize { 400.0f };
+    float currentWindowSize { 400.0f };
+
     bool isLowLatency { false };
-    int windowSize { 1024 }; // Window length in samples
-    int latencySamples { 512 };
+    int latencySamples { 256 };
 
     CircularBuffer leftDelay;
     CircularBuffer rightDelay;
