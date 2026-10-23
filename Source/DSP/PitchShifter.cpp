@@ -65,22 +65,24 @@ void PitchShifter::setLowLatencyMode(bool lowLatency)
 
 inline float PitchShifter::readCubic(const std::vector<float>& buf, double pos) const noexcept
 {
-    while (pos < 0.0)
-        pos += static_cast<double>(kBufferSize);
-    while (pos >= static_cast<double>(kBufferSize))
-        pos -= static_cast<double>(kBufferSize);
+    if (!std::isfinite(pos))
+        return 0.0f;
 
-    const int i1 = static_cast<int>(pos);
+    pos = std::fmod(pos, static_cast<double>(kBufferSize));
+    if (pos < 0.0)
+        pos += static_cast<double>(kBufferSize);
+
+    const int i1 = static_cast<int>(pos) & (kBufferSize - 1);
     const float frac = static_cast<float>(pos - static_cast<double>(i1));
 
-    const int i0 = (i1 - 1 + kBufferSize) % kBufferSize;
-    const int i2 = (i1 + 1) % kBufferSize;
-    const int i3 = (i1 + 2) % kBufferSize;
+    const int i0 = (i1 - 1) & (kBufferSize - 1);
+    const int i2 = (i1 + 1) & (kBufferSize - 1);
+    const int i3 = (i1 + 2) & (kBufferSize - 1);
 
-    const float y0 = buf[i0];
-    const float y1 = buf[i1];
-    const float y2 = buf[i2];
-    const float y3 = buf[i3];
+    const float y0 = buf[static_cast<size_t>(i0)];
+    const float y1 = buf[static_cast<size_t>(i1)];
+    const float y2 = buf[static_cast<size_t>(i2)];
+    const float y3 = buf[static_cast<size_t>(i3)];
 
     // 4-point Hermite polynomial interpolation
     const float c0 = y1;

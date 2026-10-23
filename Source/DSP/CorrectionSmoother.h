@@ -16,9 +16,9 @@ public:
     void prepare(double newSampleRate)
     {
         sampleRate = (newSampleRate > 1000.0) ? newSampleRate : 44100.0;
+        updateBiquadCoefficients();
         reset();
     }
-
 
     /**
      * Compute the smoothed pitch shift ratio to apply to the PitchShifter.
@@ -43,6 +43,9 @@ public:
                        TuningModeType mode,
                        int numSamples)
     {
+        if (!std::isfinite(rawDeviationCents))
+            rawDeviationCents = 0.0f;
+
         // 1. Mode overrides / biasing
         float effectiveRetuneSpeed = retuneSpeedMs;
         float effectiveHumanize = humanizePct;
@@ -104,12 +107,11 @@ public:
         }
         previousTargetCents = targetShiftCents;
 
-        // 5. Advanced Vibrato Preservation (5.5 Hz Biquad Bandpass Isolation)
+        // 5. Advanced Vibrato Preservation (Unconditionally Stable Biquad Bandpass)
         const float dtSeconds = static_cast<float>(numSamples) / static_cast<float>(sampleRate);
         if (vibratoPreservePct > 0.0f)
         {
-            // Update 5.5 Hz Bandpass on control deviation
-            const float bpOutput = updateVibratoBandpass(rawDeviationCents, dtSeconds);
+            const float bpOutput = updateVibratoBandpass(rawDeviationCents);
             targetShiftCents += bpOutput * (vibratoPreservePct / 100.0f);
         }
 
@@ -128,7 +130,6 @@ public:
 
             if (heldNoteDurationMs > 150.0f)
             {
-                // Note has been sustained: gently relax retune speed for organic breathing
                 const float relax = (effectiveHumanize / 100.0f) * std::min(45.0f, (heldNoteDurationMs - 150.0f) * 0.1f);
                 effectiveRetuneSpeed += relax;
             }
@@ -151,20 +152,28 @@ public:
         }
         else
         {
-            // Critically Damped Mass-Spring-Damper (zeta = 1.0):
-            // S-curve acceleration off departing pitch, maximum slew velocity in mid-transition,
-            // and critical landing on target note in exactly effectiveRetuneSpeed milliseconds!
             const float tau = std::max(0.001f, effectiveRetuneSpeed * 0.001f);
-            const float omega = 4.5f / tau; // Reaches 99.5% at t = tau with ZERO overshoot
+            const float omega = 4.5f / tau;
             const float error = targetShiftCents - smoothedPitchShiftCents;
             const float accel = (omega * omega * error) - (2.0f * omega * pitchVelocity);
 
             pitchVelocity += accel * dtSeconds;
             smoothedPitchShiftCents += pitchVelocity * dtSeconds;
+
+            if (!std::isfinite(smoothedPitchShiftCents) || !std::isfinite(pitchVelocity))
+            {
+                smoothedPitchShiftCents = targetShiftCents;
+                pitchVelocity = 0.0f;
+            }
         }
 
+        smoothedPitchShiftCents = juce::jlimit(-2400.0f, 2400.0f, smoothedPitchShiftCents);
+
         // 9. Convert cents to pitch transposition ratio: ratio = 2^(cents / 1200)
-        const float pitchRatio = std::pow(2.0f, smoothedPitchShiftCents / 1200.0f);
+        float pitchRatio = std::pow(2.0f, smoothedPitchShiftCents / 1200.0f);
+        if (!std::isfinite(pitchRatio) || pitchRatio <= 0.0f)
+            pitchRatio = 1.0f;
+
         return juce::jlimit(0.25f, 4.0f, pitchRatio);
     }
 
@@ -177,8 +186,8 @@ public:
         previousTargetCents = 0.0f;
         lastRawDeviation = 0.0f;
         heldNoteDurationMs = 0.0f;
-        bpState1 = 0.0f;
-        bpState2 = 0.0f;
+        bq_s1 = 0.0f;
+        bq_s2 = 0.0f;
     }
 
 private:
@@ -189,22 +198,48 @@ private:
     float lastRawDeviation { 0.0f };
     float heldNoteDurationMs { 0.0f };
 
-    // 2nd-order 5.5 Hz bandpass state for vibrato extraction
-    float bpState1 { 0.0f };
-    float bpState2 { 0.0f };
+    // Unconditionally stable Direct Form II Biquad Bandpass Filter (5.5 Hz)
+    float bq_b0 { 0.0f };
+    float bq_b1 { 0.0f };
+    float bq_b2 { 0.0f };
+    float bq_a1 { 0.0f };
+    float bq_a2 { 0.0f };
+    float bq_s1 { 0.0f };
+    float bq_s2 { 0.0f };
 
-    float updateVibratoBandpass(float input, float dt)
+    void updateBiquadCoefficients()
     {
-        // 5.5 Hz center frequency bandpass resonator
-        constexpr float f0 = 5.5f;
-        constexpr float Q = 1.4f;
-        const float w0 = 2.0f * juce::MathConstants<float>::pi * f0;
-        const float alpha = w0 / (2.0f * Q);
+        const double f0 = 5.5;
+        const double Q = 1.4;
+        const double w0 = 2.0 * juce::MathConstants<double>::pi * (f0 / sampleRate);
+        const double alpha = std::sin(w0) / (2.0 * Q);
+        const double cosw0 = std::cos(w0);
 
-        const float accel = -w0 * w0 * bpState1 - 2.0f * alpha * bpState2 + input * alpha;
-        bpState2 += accel * dt;
-        bpState1 += bpState2 * dt;
-        return bpState2;
+        const double a0 = 1.0 + alpha;
+        bq_b0 = static_cast<float>(alpha / a0);
+        bq_b1 = 0.0f;
+        bq_b2 = static_cast<float>(-alpha / a0);
+        bq_a1 = static_cast<float>((-2.0 * cosw0) / a0);
+        bq_a2 = static_cast<float>((1.0 - alpha) / a0);
+    }
+
+    float updateVibratoBandpass(float input)
+    {
+        if (!std::isfinite(input))
+            return 0.0f;
+
+        const float out = bq_b0 * input + bq_s1;
+        bq_s1 = bq_b1 * input - bq_a1 * out + bq_s2;
+        bq_s2 = bq_b2 * input - bq_a2 * out;
+
+        if (!std::isfinite(out) || !std::isfinite(bq_s1) || !std::isfinite(bq_s2))
+        {
+            bq_s1 = 0.0f;
+            bq_s2 = 0.0f;
+            return 0.0f;
+        }
+
+        return juce::jlimit(-100.0f, 100.0f, out);
     }
 };
 

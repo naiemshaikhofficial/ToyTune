@@ -53,8 +53,8 @@ private:
     int minPeriodSamples { 40 };   // ~1100 Hz at 44.1 kHz
     int maxPeriodSamples { 800 };  // ~55 Hz at 44.1 kHz
 
-    // Internal analysis circular buffer
-    static constexpr int kBufferSize = 4096;
+    // Internal analysis circular buffer (Power of 2 for fast, safe bitwise masking)
+    static constexpr int kBufferSize = 8192;
     std::vector<float> inputBuffer;
     int writeIndex { 0 };
 

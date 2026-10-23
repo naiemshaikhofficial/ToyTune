@@ -122,10 +122,35 @@ public:
             monoSumBuffer.applyGain(0.5f);
         }
 
-        // 2. High-Temporal Precision Pitch Tracking & Resampling (Max 128 samples per hop)
+        // 2. Fundamental Frequency Detection (Executed once per block for low CPU footprint)
         detector.setVocalRange(vocalRange);
         detector.setReferencePitch(refPitchHz);
 
+        const auto detectResult = detector.processBlock(monoSumBuffer.getReadPointer(0), numSamples);
+
+        telemetry.detectedPitchHz.store(detectResult.pitchHz, std::memory_order_relaxed);
+        telemetry.detectedMidiNote.store(detectResult.midiNote, std::memory_order_relaxed);
+        telemetry.pitchConfidence.store(detectResult.confidence, std::memory_order_relaxed);
+        telemetry.isVoiced.store(detectResult.isVoiced, std::memory_order_relaxed);
+
+        float centsDev = 0.0f;
+        if (detectResult.isVoiced && detectResult.pitchHz > 20.0f)
+        {
+            const auto target = targetSelector.resolveTarget(scaleEngine, detectResult.midiNote);
+            centsDev = target.centsDeviation;
+
+            telemetry.targetMidiNote.store(target.targetMidiNote, std::memory_order_relaxed);
+            telemetry.targetPitchHz.store(target.targetFreqHz, std::memory_order_relaxed);
+            telemetry.centsDeviation.store(centsDev, std::memory_order_relaxed);
+            telemetry.pushHistoryPoint(detectResult.pitchHz, target.targetFreqHz);
+        }
+        else
+        {
+            telemetry.centsDeviation.store(0.0f, std::memory_order_relaxed);
+            telemetry.pushHistoryPoint(0.0f, 0.0f);
+        }
+
+        // 3. High-Temporal Precision Resampling in Sub-Hops (Max 128 samples per hop for 0 ms snappy response)
         constexpr int kMaxHop = 128;
         int sampleOffset = 0;
         float currentRatio = 1.0f;
@@ -134,26 +159,9 @@ public:
         {
             const int hop = std::min(kMaxHop, numSamples - sampleOffset);
 
-            // Fundamental Frequency Detection on current slice
-            const auto detectResult = detector.processBlock(monoSumBuffer.getReadPointer(0) + sampleOffset, hop);
-
-            telemetry.detectedPitchHz.store(detectResult.pitchHz, std::memory_order_relaxed);
-            telemetry.detectedMidiNote.store(detectResult.midiNote, std::memory_order_relaxed);
-            telemetry.pitchConfidence.store(detectResult.confidence, std::memory_order_relaxed);
-            telemetry.isVoiced.store(detectResult.isVoiced, std::memory_order_relaxed);
-
             float pitchRatio = 1.0f;
-            float centsDev = 0.0f;
-
             if (detectResult.isVoiced && detectResult.pitchHz > 20.0f)
             {
-                const auto target = targetSelector.resolveTarget(scaleEngine, detectResult.midiNote);
-                centsDev = target.centsDeviation;
-
-                telemetry.targetMidiNote.store(target.targetMidiNote, std::memory_order_relaxed);
-                telemetry.targetPitchHz.store(target.targetFreqHz, std::memory_order_relaxed);
-                telemetry.centsDeviation.store(centsDev, std::memory_order_relaxed);
-
                 pitchRatio = smoother.processBlock(centsDev,
                                                    retuneSpeedMs,
                                                    strengthPct,
@@ -163,14 +171,10 @@ public:
                                                    vibratoPreservePct,
                                                    tuningMode,
                                                    hop);
-
-                telemetry.pushHistoryPoint(detectResult.pitchHz, target.targetFreqHz);
             }
             else
             {
                 pitchRatio = 1.0f;
-                telemetry.centsDeviation.store(0.0f, std::memory_order_relaxed);
-                telemetry.pushHistoryPoint(0.0f, 0.0f);
             }
 
             currentRatio = pitchRatio;

@@ -131,20 +131,21 @@ PitchDetectionResult PitchDetector::processBlock(const float* channelData, int n
     // Append incoming samples into circular analysis buffer
     for (int i = 0; i < numSamples; ++i)
     {
-        inputBuffer[writeIndex] = channelData[i];
-        writeIndex = (writeIndex + 1) % kBufferSize;
+        inputBuffer[static_cast<size_t>(writeIndex)] = channelData[i];
+        writeIndex = (writeIndex + 1) & (kBufferSize - 1);
     }
 
     // Step 1: Compute Full-Resolution Difference Function without inner loop modulo
     // d(tau) = sum_{j=0}^{W-1} (x[j] - x[j+tau])^2
     const int windowSize = maxPeriodSamples;
-    const int totalSpan = windowSize + maxPeriodSamples;
-    const int bufferStart = (writeIndex - totalSpan + kBufferSize * 4) % kBufferSize;
+    const int totalSpan = std::min(windowSize + maxPeriodSamples, kBufferSize);
+    const int bufferStart = (writeIndex - totalSpan + kBufferSize * 8) & (kBufferSize - 1);
 
     // Linearize the continuous ring buffer into contiguous memory for auto-vectorization
     for (int j = 0; j < totalSpan; ++j)
     {
-        linearBuffer[static_cast<size_t>(j)] = inputBuffer[static_cast<size_t>((bufferStart + j) % kBufferSize)];
+        const int readIdx = (bufferStart + j) & (kBufferSize - 1);
+        linearBuffer[static_cast<size_t>(j)] = inputBuffer[static_cast<size_t>(readIdx)];
     }
 
     differenceBuffer[0] = 0.0f;
