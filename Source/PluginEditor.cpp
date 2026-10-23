@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include "Parameters/ToyTuneParameters.h"
 
 namespace toytune
 {
@@ -6,311 +7,258 @@ namespace toytune
 ToyTuneAudioProcessorEditor::ToyTuneAudioProcessorEditor(ToyTuneAudioProcessor& p)
     : AudioProcessorEditor(&p),
       audioProcessor(p),
-      headerBar(p.getAPVTS(), p.getPresetManager()),
-      pitchLane(p.getTelemetry()),
-      keyboardSelector(p.getAPVTS()),
-      retuneSpeedKnob("RETUNE", "ms"),
-      correctionStrengthKnob("STRENGTH", "%"),
-      pitchToleranceKnob("TOLERANCE", "ct"),
-      humanizeKnob("HUMANIZE", "%"),
-      flexTuneKnob("FLEX TUNE", "%"),
-      vibratoPreserveKnob("VIBRATO", "%"),
-      inMeter("IN"),
-      outMeter("OUT"),
-      inputGainKnob("IN GAIN", "dB"),
-      outputGainKnob("OUT GAIN", "dB"),
-      mixKnob("DRY/WET", "%"),
-      formantShiftKnob("FORMANT", "st")
+      headerBar(audioProcessor.getAPVTS(), audioProcessor.getPresetManager()),
+      retuneSpeedKnob("Retune Speed", "", false, true),
+      centralPitchDisplay(audioProcessor.getTelemetry()),
+      humanizeKnob("Humanize", "", false, true),
+      keyboardSelector(audioProcessor.getAPVTS()),
+      flexTuneKnob("Flex Tune", "", false, false),
+      vibratoKnob("Vibrato", "", false, false),
+      formantKnob("Formant", "", false, false),
+      mixKnob("Mix", "", false, false),
+      outputGainKnob("Output", "dB", true, false)
 {
-    juce::LookAndFeel::setDefaultLookAndFeel(&customLookAndFeel);
+    setLookAndFeel(&customLookAndFeel);
 
-    // 1. Header Bar
+    // 1. Top Header Bar
     addAndMakeVisible(headerBar);
 
-    // 2. Central Pitch Workspace
-    addAndMakeVisible(pitchLane);
+    // 2. Upper Selectors Row
+    // Input Type Label & Selector (Auto, Male, Female)
+    inputTypeLabel.setText("Input Type", juce::dontSendNotification);
+    inputTypeLabel.setFont(juce::Font(juce::FontOptions(11.0f).withStyle("Bold")));
+    inputTypeLabel.setColour(juce::Label::textColourId, juce::Colour(0xff8a8d9a));
+    inputTypeLabel.setJustificationType(juce::Justification::centredLeft);
+    addAndMakeVisible(inputTypeLabel);
 
-    // 3. Key & Scale Section
-    scaleGroup.setText("KEY & SCALE");
-    scaleGroup.setColour(juce::GroupComponent::outlineColourId, juce::Colour(0xff222228));
-    scaleGroup.setColour(juce::GroupComponent::textColourId, juce::Colour(0xff8a8a95));
-    addAndMakeVisible(scaleGroup);
+    inputTypeSelector = std::make_unique<SegmentedPillComponent>(
+        juce::StringArray { "Auto", "Male", "Female" },
+        audioProcessor.getAPVTS(),
+        ParameterIDs::vocalRange,
+        std::vector<int> { 0, 1, 3 } // 0=Wide(Auto), 1=BassBaritone(Male), 3=AltoSoprano(Female)
+    );
+    addAndMakeVisible(*inputTypeSelector);
 
-    rootLabel.setText("Root", juce::dontSendNotification);
-    rootLabel.setFont(juce::Font(juce::FontOptions(11.0f).withStyle("Bold")));
-    rootLabel.setColour(juce::Label::textColourId, juce::Colour(0xff9a9aa5));
-    addAndMakeVisible(rootLabel);
+    // Key & Scale Label & ComboBoxes
+    keyScaleLabel.setText("Key & Scale", juce::dontSendNotification);
+    keyScaleLabel.setFont(juce::Font(juce::FontOptions(11.0f).withStyle("Bold")));
+    keyScaleLabel.setColour(juce::Label::textColourId, juce::Colour(0xff8a8d9a));
+    keyScaleLabel.setJustificationType(juce::Justification::centred);
+    addAndMakeVisible(keyScaleLabel);
 
     rootKeyBox.addItemList(ToyTuneParameters::getRootNoteNames(), 1);
     rootKeyAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         audioProcessor.getAPVTS(), ParameterIDs::rootNote, rootKeyBox);
     addAndMakeVisible(rootKeyBox);
 
-    scaleLabel.setText("Scale", juce::dontSendNotification);
-    scaleLabel.setFont(juce::Font(juce::FontOptions(11.0f).withStyle("Bold")));
-    scaleLabel.setColour(juce::Label::textColourId, juce::Colour(0xff9a9aa5));
-    addAndMakeVisible(scaleLabel);
-
     scaleTypeBox.addItemList(ToyTuneParameters::getScaleTypeNames(), 1);
     scaleTypeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         audioProcessor.getAPVTS(), ParameterIDs::scaleType, scaleTypeBox);
     addAndMakeVisible(scaleTypeBox);
 
-    refPitchLabel.setText("A4 Ref", juce::dontSendNotification);
-    refPitchLabel.setFont(juce::Font(juce::FontOptions(11.0f).withStyle("Bold")));
-    refPitchLabel.setColour(juce::Label::textColourId, juce::Colour(0xff9a9aa5));
-    addAndMakeVisible(refPitchLabel);
+    // Tuning Mode Label & Selector (Modern, Classic)
+    tuningModeLabel.setText("Tuning Mode", juce::dontSendNotification);
+    tuningModeLabel.setFont(juce::Font(juce::FontOptions(11.0f).withStyle("Bold")));
+    tuningModeLabel.setColour(juce::Label::textColourId, juce::Colour(0xff8a8d9a));
+    tuningModeLabel.setJustificationType(juce::Justification::centredRight);
+    addAndMakeVisible(tuningModeLabel);
 
-    refPitchSlider.setSliderStyle(juce::Slider::LinearBar);
-    refPitchSlider.setTextValueSuffix(" Hz");
-    refPitchAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
-        audioProcessor.getAPVTS(), ParameterIDs::referencePitch, refPitchSlider);
-    addAndMakeVisible(refPitchSlider);
+    tuningModeSelector = std::make_unique<SegmentedPillComponent>(
+        juce::StringArray { "Modern", "Classic" },
+        audioProcessor.getAPVTS(),
+        ParameterIDs::tuningMode,
+        std::vector<int> { 1, 0 } // 1=Modern, 0=Natural/Classic
+    );
+    addAndMakeVisible(*tuningModeSelector);
 
-    addAndMakeVisible(keyboardSelector);
-
-    // 4. Dedicated Tuning Controls Section
-    tuningGroup.setText("TUNING DYNAMICS");
-    tuningGroup.setColour(juce::GroupComponent::outlineColourId, juce::Colour(0xff222228));
-    tuningGroup.setColour(juce::GroupComponent::textColourId, juce::Colour(0xff8a8a95));
-    addAndMakeVisible(tuningGroup);
-
+    // 3. Middle Section
     retuneSpeedKnob.attachToParameter(audioProcessor.getAPVTS(), ParameterIDs::retuneSpeed);
     addAndMakeVisible(retuneSpeedKnob);
 
-    correctionStrengthKnob.attachToParameter(audioProcessor.getAPVTS(), ParameterIDs::correctionStrength);
-    addAndMakeVisible(correctionStrengthKnob);
-
-    pitchToleranceKnob.attachToParameter(audioProcessor.getAPVTS(), ParameterIDs::pitchTolerance);
-    addAndMakeVisible(pitchToleranceKnob);
+    addAndMakeVisible(centralPitchDisplay);
 
     humanizeKnob.attachToParameter(audioProcessor.getAPVTS(), ParameterIDs::humanize);
     addAndMakeVisible(humanizeKnob);
 
+    // 4. Chromatic Keyboard
+    addAndMakeVisible(keyboardSelector);
+
+    // 5. Bottom Section
     flexTuneKnob.attachToParameter(audioProcessor.getAPVTS(), ParameterIDs::flexTune);
     addAndMakeVisible(flexTuneKnob);
 
-    vibratoPreserveKnob.attachToParameter(audioProcessor.getAPVTS(), ParameterIDs::vibratoPreserve);
-    addAndMakeVisible(vibratoPreserveKnob);
+    vibratoKnob.attachToParameter(audioProcessor.getAPVTS(), ParameterIDs::vibratoPreserve);
+    addAndMakeVisible(vibratoKnob);
 
-    modeLabel.setText("Mode", juce::dontSendNotification);
-    modeLabel.setFont(juce::Font(juce::FontOptions(11.0f).withStyle("Bold")));
-    modeLabel.setColour(juce::Label::textColourId, juce::Colour(0xff9a9aa5));
-    addAndMakeVisible(modeLabel);
+    formantKnob.attachToParameter(audioProcessor.getAPVTS(), ParameterIDs::formantShift);
+    addAndMakeVisible(formantKnob);
 
-    tuningModeBox.addItemList(ToyTuneParameters::getTuningModeNames(), 1);
-    tuningModeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-        audioProcessor.getAPVTS(), ParameterIDs::tuningMode, tuningModeBox);
-    addAndMakeVisible(tuningModeBox);
-
-    // 5. Bottom Utility Strip
-    utilityGroup.setText("MASTER & VOICE UTILITY");
-    utilityGroup.setColour(juce::GroupComponent::outlineColourId, juce::Colour(0xff222228));
-    utilityGroup.setColour(juce::GroupComponent::textColourId, juce::Colour(0xff8a8a95));
-    addAndMakeVisible(utilityGroup);
-
-    addAndMakeVisible(inMeter);
-    addAndMakeVisible(outMeter);
-
-    inputGainKnob.attachToParameter(audioProcessor.getAPVTS(), ParameterIDs::inputGain);
-    addAndMakeVisible(inputGainKnob);
-
-    outputGainKnob.attachToParameter(audioProcessor.getAPVTS(), ParameterIDs::outputGain);
-    addAndMakeVisible(outputGainKnob);
+    rangeSlider.attachToParameter(audioProcessor.getAPVTS(), ParameterIDs::pitchTolerance);
+    addAndMakeVisible(rangeSlider);
 
     mixKnob.attachToParameter(audioProcessor.getAPVTS(), ParameterIDs::dryWetMix);
     addAndMakeVisible(mixKnob);
 
-    vocalRangeLabel.setText("Vocal Range", juce::dontSendNotification);
-    vocalRangeLabel.setFont(juce::Font(juce::FontOptions(11.0f).withStyle("Bold")));
-    vocalRangeLabel.setColour(juce::Label::textColourId, juce::Colour(0xff9a9aa5));
-    addAndMakeVisible(vocalRangeLabel);
+    outputGainKnob.attachToParameter(audioProcessor.getAPVTS(), ParameterIDs::outputGain);
+    addAndMakeVisible(outputGainKnob);
 
-    vocalRangeBox.addItemList(ToyTuneParameters::getVocalRangeNames(), 1);
-    vocalRangeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
-        audioProcessor.getAPVTS(), ParameterIDs::vocalRange, vocalRangeBox);
-    addAndMakeVisible(vocalRangeBox);
+    // Fixed aspect window matching reference: 1000 x 660
+    setSize(1000, 660);
 
-    formantPreserveBtn.setButtonText("Preserve Formants");
-    formantPreserveAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
-        audioProcessor.getAPVTS(), ParameterIDs::formantPreserve, formantPreserveBtn);
-    addAndMakeVisible(formantPreserveBtn);
-
-    formantShiftKnob.attachToParameter(audioProcessor.getAPVTS(), ParameterIDs::formantShift);
-    addAndMakeVisible(formantShiftKnob);
-
-    lowLatencyBtn.setButtonText("Low Latency");
-    lowLatencyAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(
-        audioProcessor.getAPVTS(), ParameterIDs::lowLatencyMode, lowLatencyBtn);
-    addAndMakeVisible(lowLatencyBtn);
-
-    latencyDisplay.setFont(juce::Font(juce::FontOptions(10.5f)));
-    latencyDisplay.setColour(juce::Label::textColourId, juce::Colour(0xff6e6e78));
-    latencyDisplay.setText("Latency: 512 smp (11.6 ms)", juce::dontSendNotification);
-    addAndMakeVisible(latencyDisplay);
-
-    setSize(920, 640);
-    startTimerHz(30); // 30 FPS smooth telemetry update
+    // 60 FPS ultra-smooth audio telemetry and pitch needle updates
+    startTimerHz(60);
 }
 
 ToyTuneAudioProcessorEditor::~ToyTuneAudioProcessorEditor()
 {
     stopTimer();
-    juce::LookAndFeel::setDefaultLookAndFeel(nullptr);
+    setLookAndFeel(nullptr);
 }
 
 void ToyTuneAudioProcessorEditor::timerCallback()
 {
-    auto& telemetry = audioProcessor.getTelemetry();
+    // Update real-time pitch analysis display
+    centralPitchDisplay.updateTelemetry();
 
-    // 1. Update Pitch Lane & History
-    pitchLane.updateTelemetry();
+    // Update real-time active sung note on chromatic keyboard
+    const bool voiced = audioProcessor.getTelemetry().isVoiced.load(std::memory_order_relaxed);
+    const float targetMidi = audioProcessor.getTelemetry().targetMidiNote.load(std::memory_order_relaxed);
+    const float detMidi = audioProcessor.getTelemetry().detectedMidiNote.load(std::memory_order_relaxed);
 
-    // 2. Update Meters
-    inMeter.setLevel(telemetry.inputRmsDb.load(std::memory_order_relaxed));
-    outMeter.setLevel(telemetry.outputRmsDb.load(std::memory_order_relaxed));
-
-    // 3. Highlight detected note on piano keyboard
-    const float detMidi = telemetry.detectedMidiNote.load(std::memory_order_relaxed);
-    const bool isVoiced = telemetry.isVoiced.load(std::memory_order_relaxed);
-    if (isVoiced && detMidi > 10.0f)
+    int activeSemitone = -1;
+    if (voiced && detMidi >= 20.0f)
     {
-        const int semitone = (static_cast<int>(std::round(detMidi)) % 12 + 12) % 12;
-        keyboardSelector.setActiveNoteDetected(semitone);
+        activeSemitone = (static_cast<int>(std::round(targetMidi > 0.0f ? targetMidi : detMidi)) % 12 + 12) % 12;
     }
-    else
-    {
-        keyboardSelector.setActiveNoteDetected(-1);
-    }
+    keyboardSelector.setActiveNoteDetected(activeSemitone);
 
-    keyboardSelector.updateScaleHighlights(audioProcessor.getScaleEngine().getActiveMask());
+    // Keep segmented selectors synchronized if automation or presets changed them
+    if (inputTypeSelector != nullptr)
+        inputTypeSelector->updateFromParameter();
 
-    // 4. Update Latency readout
-    const int latencySamples = audioProcessor.getLatencySamples();
-    const double sr = audioProcessor.getSampleRate() > 1000.0 ? audioProcessor.getSampleRate() : 44100.0;
-    const double latencyMs = (static_cast<double>(latencySamples) / sr) * 1000.0;
-    latencyDisplay.setText("PDC Latency: " + juce::String(latencySamples) + " smp (" + juce::String(latencyMs, 1) + " ms)",
-                           juce::dontSendNotification);
+    if (tuningModeSelector != nullptr)
+        tuningModeSelector->updateFromParameter();
 }
 
 void ToyTuneAudioProcessorEditor::paint(juce::Graphics& g)
 {
-    // Charcoal Luxury Background
-    g.fillAll(ToyTuneLookAndFeel::backgroundDark);
+    const auto bounds = getLocalBounds().toFloat();
+
+    // 1. Overall Dark Luxury Matte Background
+    juce::ColourGradient bgGrad(juce::Colour(0xff0d0e11), bounds.getCentreX(), bounds.getY(),
+                                juce::Colour(0xff07080a), bounds.getCentreX(), bounds.getBottom(), false);
+    g.setGradientFill(bgGrad);
+    g.fillRoundedRectangle(bounds, 12.0f);
+
+    // Subtle outer metallic chassis rim
+    g.setColour(juce::Colour(0xff1e2027));
+    g.drawRoundedRectangle(bounds, 12.0f, 1.5f);
+
+    // 2. Angled Ventilation Grip Ridges on Left and Right Chassis Margins
+    // Upper Grip Lines (Next to Retune Speed and Humanize cards)
+    g.setColour(juce::Colour(0x30ffffff));
+    const float gripStartX_L = bounds.getX() + 20.0f;
+    const float gripStartX_R = bounds.getRight() - 20.0f;
+
+    for (int i = 0; i < 5; ++i)
+    {
+        const float y = 220.0f + static_cast<float>(i) * 12.0f;
+        // Left angled vents
+        g.drawLine(gripStartX_L - 8.0f, y + 10.0f, gripStartX_L + 2.0f, y - 2.0f, 2.2f);
+        // Right angled vents
+        g.drawLine(gripStartX_R - 2.0f, y + 10.0f, gripStartX_R + 8.0f, y - 2.0f, 2.2f);
+    }
+
+    // Lower Grip Lines (Next to Bottom Shelf)
+    for (int i = 0; i < 4; ++i)
+    {
+        const float y = 525.0f + static_cast<float>(i) * 12.0f;
+        g.drawLine(gripStartX_L - 8.0f, y + 10.0f, gripStartX_L + 2.0f, y - 2.0f, 2.2f);
+        g.drawLine(gripStartX_R - 2.0f, y + 10.0f, gripStartX_R + 8.0f, y - 2.0f, 2.2f);
+    }
+
+    // 3. Bottom Control Shelf Background Card
+    const auto shelfRect = bottomShelfBounds.toFloat();
+    g.setColour(juce::Colour(0xff101114));
+    g.fillRoundedRectangle(shelfRect, 12.0f);
+    g.setColour(juce::Colour(0xff1e2027));
+    g.drawRoundedRectangle(shelfRect, 12.0f, 1.2f);
 }
 
 void ToyTuneAudioProcessorEditor::resized()
 {
-    auto area = getLocalBounds();
+    const auto bounds = getLocalBounds();
 
-    // 1. Header (50px height)
-    headerBar.setBounds(area.removeFromTop(50));
+    // 1. Top Header Bar
+    headerBar.setBounds(0, 0, bounds.getWidth(), 56);
 
-    // Margins
-    area.reduce(12, 10);
+    // 2. Upper Selectors Row (y=66 to 110)
+    const int upperY = 66;
 
-    // 2. Bottom Utility Strip (115px height)
-    auto utilityArea = area.removeFromBottom(115);
-    utilityGroup.setBounds(utilityArea);
-    auto uContent = utilityArea.reduced(10, 16);
+    // Left: Input Type
+    inputTypeLabel.setBounds(44, upperY, 180, 16);
+    if (inputTypeSelector != nullptr)
+        inputTypeSelector->setBounds(44, upperY + 18, 190, 30);
 
-    // In & Out Meters
-    inMeter.setBounds(uContent.removeFromLeft(24));
-    uContent.removeFromLeft(6);
-    outMeter.setBounds(uContent.removeFromLeft(24));
-    uContent.removeFromLeft(16);
+    // Center: Key & Scale
+    const int centerKeyScaleW = 168;
+    const int centerKeyScaleX = bounds.getCentreX() - (centerKeyScaleW / 2);
+    keyScaleLabel.setBounds(centerKeyScaleX, upperY, centerKeyScaleW, 16);
+    rootKeyBox.setBounds(centerKeyScaleX, upperY + 18, 64, 30);
+    scaleTypeBox.setBounds(centerKeyScaleX + 70, upperY + 18, 98, 30);
 
-    // Input Gain, Output Gain, Dry/Wet Mix knobs
-    inputGainKnob.setBounds(uContent.removeFromLeft(68));
-    uContent.removeFromLeft(6);
-    outputGainKnob.setBounds(uContent.removeFromLeft(68));
-    uContent.removeFromLeft(6);
-    mixKnob.setBounds(uContent.removeFromLeft(68));
-    uContent.removeFromLeft(20);
+    // Right: Tuning Mode
+    const int modeW = 180;
+    const int modeX = bounds.getRight() - 44 - modeW;
+    tuningModeLabel.setBounds(modeX, upperY, modeW, 16);
+    if (tuningModeSelector != nullptr)
+        tuningModeSelector->setBounds(modeX, upperY + 18, modeW, 30);
 
-    // Vocal Range
-    auto rangeArea = uContent.removeFromLeft(140);
-    vocalRangeLabel.setBounds(rangeArea.removeFromTop(18));
-    vocalRangeBox.setBounds(rangeArea.removeFromTop(24));
-    uContent.removeFromLeft(16);
+    // 3. Middle Section (y=128 to 366)
+    const int midY = 128;
+    const int cardW = 142;
+    const int cardH = 228;
 
-    // Formant Controls
-    auto formantArea = uContent.removeFromLeft(170);
-    formantShiftKnob.setBounds(formantArea.removeFromLeft(68));
-    formantArea.removeFromLeft(8);
-    formantPreserveBtn.setBounds(formantArea.removeFromTop(24));
-    uContent.removeFromLeft(16);
+    // Left Card: Retune Speed
+    retuneSpeedKnob.setBounds(44, midY, cardW, cardH);
 
-    // Latency controls
-    lowLatencyBtn.setBounds(uContent.removeFromTop(24));
-    latencyDisplay.setBounds(uContent.removeFromTop(20));
+    // Center: Circular Pitch Display
+    const int displayX = 44 + cardW + 12;
+    const int displayW = modeX - displayX - 12;
+    centralPitchDisplay.setBounds(displayX, midY, displayW, cardH);
 
-    area.removeFromBottom(10);
+    // Right Card: Humanize
+    humanizeKnob.setBounds(modeX + modeW - cardW, midY, cardW, cardH);
 
-    // 3. Key & Scale Section (bottom-middle, 75px height)
-    auto scaleArea = area.removeFromBottom(75);
-    scaleGroup.setBounds(scaleArea);
-    auto sContent = scaleArea.reduced(10, 14);
+    // 4. Chromatic Keyboard Bar (y=376 to 414)
+    keyboardSelector.setBounds(68, 376, bounds.getWidth() - 136, 36);
 
-    // Root
-    auto rootArea = sContent.removeFromLeft(70);
-    rootLabel.setBounds(rootArea.removeFromTop(16));
-    rootKeyBox.setBounds(rootArea.removeFromTop(24));
-    sContent.removeFromLeft(8);
+    // 5. Bottom Control Section (y=432 to 628)
+    const int shelfX = 44;
+    const int shelfW = bounds.getWidth() - 88;
+    const int shelfY = 432;
+    const int shelfH = 196;
+    bottomShelfBounds = juce::Rectangle<int>(shelfX, shelfY, shelfW, shelfH);
 
-    // Scale
-    auto scaleSelectArea = sContent.removeFromLeft(130);
-    scaleLabel.setBounds(scaleSelectArea.removeFromTop(16));
-    scaleTypeBox.setBounds(scaleSelectArea.removeFromTop(24));
-    sContent.removeFromLeft(8);
+    // Sub-group: Left 3 Knobs (Flex Tune, Vibrato, Formant)
+    const int knobW = 82;
+    const int knobH = 150;
+    const int knobY = shelfY + 22;
 
-    // A4 Ref Pitch
-    auto refArea = sContent.removeFromLeft(80);
-    refPitchLabel.setBounds(refArea.removeFromTop(16));
-    refPitchSlider.setBounds(refArea.removeFromTop(24));
-    sContent.removeFromLeft(16);
+    flexTuneKnob.setBounds(shelfX + 22, knobY, knobW, knobH);
+    vibratoKnob.setBounds(shelfX + 22 + knobW + 10, knobY, knobW, knobH);
+    formantKnob.setBounds(shelfX + 22 + (knobW + 10) * 2, knobY, knobW, knobH);
 
-    // Interactive Piano Keyboard
-    keyboardSelector.setBounds(sContent);
+    // Sub-group: Center Pitch Correction Range Slider
+    const int rangeX = shelfX + 22 + (knobW + 10) * 3 + 18;
+    const int rightKnobsTotalW = (knobW + 12) * 2;
+    const int rangeW = (shelfX + shelfW - rightKnobsTotalW - 22) - rangeX - 18;
+    rangeSlider.setBounds(rangeX, shelfY + 34, rangeW, 110);
 
-    area.removeFromBottom(10);
-
-    // 4. Middle Split: Left = Dedicated Tuning Controls (310px wide), Right = Central Pitch Workspace
-    auto tuningArea = area.removeFromRight(330);
-    tuningGroup.setBounds(tuningArea);
-    auto tContent = tuningArea.reduced(10, 14);
-
-    // Mode dropdown at top of tuning panel
-    auto modeArea = tContent.removeFromTop(44);
-    modeLabel.setBounds(modeArea.removeFromTop(16));
-    tuningModeBox.setBounds(modeArea.removeFromTop(24));
-
-    tContent.removeFromTop(8);
-
-    // 2 rows of 3 knobs
-    const int knobW = 96;
-    const int knobH = 76;
-
-    auto row1 = tContent.removeFromTop(knobH);
-    retuneSpeedKnob.setBounds(row1.removeFromLeft(knobW));
-    row1.removeFromLeft(8);
-    correctionStrengthKnob.setBounds(row1.removeFromLeft(knobW));
-    row1.removeFromLeft(8);
-    pitchToleranceKnob.setBounds(row1.removeFromLeft(knobW));
-
-    tContent.removeFromTop(10);
-
-    auto row2 = tContent.removeFromTop(knobH);
-    humanizeKnob.setBounds(row2.removeFromLeft(knobW));
-    row2.removeFromLeft(8);
-    flexTuneKnob.setBounds(row2.removeFromLeft(knobW));
-    row2.removeFromLeft(8);
-    vibratoPreserveKnob.setBounds(row2.removeFromLeft(knobW));
-
-    area.removeFromRight(10);
-
-    // Central Pitch Workspace occupies remaining area
-    pitchLane.setBounds(area);
+    // Sub-group: Right 2 Knobs (Mix, Output)
+    const int mixX = shelfX + shelfW - rightKnobsTotalW - 14;
+    mixKnob.setBounds(mixX, knobY, knobW, knobH);
+    outputGainKnob.setBounds(mixX + knobW + 12, knobY, knobW, knobH);
 }
 
 } // namespace toytune

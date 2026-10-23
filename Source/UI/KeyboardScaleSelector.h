@@ -8,20 +8,23 @@
 namespace toytune
 {
 
+/**
+ * Chromatic Note Selector Bar matching Producer Toy ToyTune reference image.
+ * Features 12 rounded oval capsule buttons: C, C#, D, D#, E, F, F#, G, G#, A, A#, B.
+ * Active sung note is highlighted with a bright white pill/halo as shown in reference.
+ * Clicking a note toggles its inclusion in the active musical scale.
+ */
 class KeyboardScaleSelector : public juce::Component
 {
 public:
-    KeyboardScaleSelector(juce::AudioProcessorValueTreeState& state)
+    explicit KeyboardScaleSelector(juce::AudioProcessorValueTreeState& state)
         : apvts(state)
     {
         for (int i = 0; i < 12; ++i)
         {
             noteButtons[i] = std::make_unique<juce::TextButton>(ToyTuneParameters::getRootNoteNames()[i]);
             noteButtons[i]->setClickingTogglesState(true);
-            noteButtons[i]->setColour(juce::TextButton::buttonColourId, isBlackKey(i) ? juce::Colour(0xff121215) : juce::Colour(0xff1f1f26));
-            noteButtons[i]->setColour(juce::TextButton::buttonOnColourId, isBlackKey(i) ? juce::Colour(0xff2a2a34) : juce::Colour(0xff363642));
-            noteButtons[i]->setColour(juce::TextButton::textColourOffId, juce::Colour(0xff555560));
-            noteButtons[i]->setColour(juce::TextButton::textColourOnId, juce::Colour(0xffffffff));
+            noteButtons[i]->setConnectedEdges(0);
 
             const auto paramId = ParameterIDs::noteMask(i);
             attachments[i] = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment>(apvts, paramId, *noteButtons[i]);
@@ -41,23 +44,53 @@ public:
     void updateScaleHighlights(const std::array<bool, 12>& mask)
     {
         currentMask = mask;
-        for (int i = 0; i < 12; ++i)
-        {
-            noteButtons[i]->setAlpha(currentMask[i] ? 1.0f : 0.45f);
-        }
         repaint();
+    }
+
+    void paint(juce::Graphics& /*g*/) override
+    {
+        // Background handled per note button
     }
 
     void paintOverChildren(juce::Graphics& g) override
     {
-        if (currentDetectedSemitone >= 0 && currentDetectedSemitone < 12)
+        for (int i = 0; i < 12; ++i)
         {
-            const auto btnBounds = noteButtons[currentDetectedSemitone]->getBounds().toFloat();
-            g.setColour(juce::Colour(0xffffffff));
-            g.drawRoundedRectangle(btnBounds.reduced(1.0f), 3.0f, 1.5f);
+            const auto btnBounds = noteButtons[i]->getBounds().toFloat();
+            const bool isSelectedInScale = noteButtons[i]->getToggleState();
+            const bool isCurrentlySung = (currentDetectedSemitone == i);
 
-            // Small indicator pip
-            g.fillEllipse(btnBounds.getCentreX() - 2.5f, btnBounds.getBottom() - 7.0f, 5.0f, 5.0f);
+            // Draw custom oval pill over the button
+            if (isCurrentlySung)
+            {
+                // Active Sung Note: Bright white glowing pill with dark text
+                g.setColour(juce::Colour(0x50ffffff));
+                g.fillRoundedRectangle(btnBounds.expanded(2.0f), btnBounds.getHeight() * 0.5f);
+
+                g.setColour(juce::Colour(0xffffffff));
+                g.fillRoundedRectangle(btnBounds, btnBounds.getHeight() * 0.5f);
+
+                g.setColour(juce::Colour(0xff0a0a0d));
+                g.setFont(juce::Font(juce::FontOptions(12.5f).withStyle("Bold")));
+                g.drawText(ToyTuneParameters::getRootNoteNames()[i], btnBounds, juce::Justification::centred, false);
+            }
+            else
+            {
+                // Normal note pill
+                const juce::Colour bgCol = isSelectedInScale ? juce::Colour(0xff16171b) : juce::Colour(0xff0e0f12);
+                const juce::Colour borderCol = isSelectedInScale ? juce::Colour(0xff2d3039) : juce::Colour(0xff1a1b20);
+                const juce::Colour textCol = isSelectedInScale ? juce::Colour(0xffd5d8e2) : juce::Colour(0xff4a4c58);
+
+                g.setColour(bgCol);
+                g.fillRoundedRectangle(btnBounds, btnBounds.getHeight() * 0.5f);
+
+                g.setColour(borderCol);
+                g.drawRoundedRectangle(btnBounds, btnBounds.getHeight() * 0.5f, 1.2f);
+
+                g.setColour(textCol);
+                g.setFont(juce::Font(juce::FontOptions(12.0f).withStyle(isSelectedInScale ? "Bold" : "Regular")));
+                g.drawText(ToyTuneParameters::getRootNoteNames()[i], btnBounds, juce::Justification::centred, false);
+            }
         }
     }
 
@@ -65,12 +98,17 @@ public:
     {
         const auto bounds = getLocalBounds();
         const int numKeys = 12;
-        const int keyWidth = bounds.getWidth() / numKeys;
-        const int keyHeight = bounds.getHeight();
+        const int buttonHeight = bounds.getHeight();
+        const float gap = 6.0f;
+        const float totalGaps = gap * static_cast<float>(numKeys - 1);
+        const float buttonWidth = (static_cast<float>(bounds.getWidth()) - totalGaps) / static_cast<float>(numKeys);
 
         for (int i = 0; i < numKeys; ++i)
         {
-            noteButtons[i]->setBounds(i * keyWidth, 0, keyWidth - 2, keyHeight);
+            const float x = static_cast<float>(i) * (buttonWidth + gap);
+            noteButtons[i]->setBounds(static_cast<int>(std::round(x)), 0,
+                                      static_cast<int>(std::round(buttonWidth)), buttonHeight);
+            noteButtons[i]->setAlpha(0.0f); // Make underlying JUCE button invisible, painted in paintOverChildren
         }
     }
 
@@ -80,12 +118,6 @@ private:
     std::array<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>, 12> attachments;
     std::array<bool, 12> currentMask;
     int currentDetectedSemitone { -1 };
-
-    static bool isBlackKey(int semitone) noexcept
-    {
-        // C=0, C#=1, D=2, D#=3, E=4, F=5, F#=6, G=7, G#=8, A=9, A#=10, B=11
-        return (semitone == 1 || semitone == 3 || semitone == 6 || semitone == 8 || semitone == 10);
-    }
 };
 
 } // namespace toytune

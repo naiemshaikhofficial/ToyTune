@@ -103,22 +103,26 @@ void ToyTuneLookAndFeel::drawComboBox(juce::Graphics& g, int width, int height, 
                                       int /*buttonX*/, int /*buttonY*/, int /*buttonW*/, int /*buttonH*/,
                                       juce::ComboBox& box)
 {
-    const auto bounds = juce::Rectangle<int>(0, 0, width, height).toFloat().reduced(0.5f);
+    const auto bounds = juce::Rectangle<int>(0, 0, width, height).toFloat().reduced(1.0f);
+    const float radius = bounds.getHeight() * 0.5f;
 
-    g.setColour(panelBackground);
-    g.fillRoundedRectangle(bounds, 4.0f);
+    // Dark capsule background
+    g.setColour(juce::Colour(0xff141518));
+    g.fillRoundedRectangle(bounds, radius);
 
-    g.setColour(panelBorder);
-    g.drawRoundedRectangle(bounds, 4.0f, 1.0f);
+    g.setColour(juce::Colour(0xff272932));
+    g.drawRoundedRectangle(bounds, radius, 1.2f);
 
-    // Downward arrow
-    const auto arrowX = width - 16.0f;
-    const auto arrowY = height * 0.5f - 2.0f;
+    // Downward chevron arrow
+    const float arrowX = static_cast<float>(width) - 18.0f;
+    const float arrowY = static_cast<float>(height) * 0.5f - 1.5f;
 
-    juce::Path arrow;
-    arrow.addTriangle(arrowX, arrowY, arrowX + 8.0f, arrowY, arrowX + 4.0f, arrowY + 5.0f);
-    g.setColour(box.isEnabled() ? accentSilver : textMuted);
-    g.fillPath(arrow);
+    juce::Path chevron;
+    chevron.startNewSubPath(arrowX, arrowY);
+    chevron.lineTo(arrowX + 4.5f, arrowY + 4.5f);
+    chevron.lineTo(arrowX + 9.0f, arrowY);
+    g.setColour(box.isEnabled() ? juce::Colour(0xffc5c8d4) : juce::Colour(0xff555865));
+    g.strokePath(chevron, juce::PathStrokeType(1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 }
 
 void ToyTuneLookAndFeel::drawToggleButton(juce::Graphics& g, juce::ToggleButton& button,

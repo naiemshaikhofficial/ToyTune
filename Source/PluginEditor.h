@@ -5,10 +5,11 @@
 #include "PluginProcessor.h"
 #include "UI/ToyTuneLookAndFeel.h"
 #include "UI/HeaderBarComponent.h"
-#include "UI/PitchLaneComponent.h"
+#include "UI/CentralPitchDisplayComponent.h"
 #include "UI/KeyboardScaleSelector.h"
 #include "UI/RotarySliderWithLabel.h"
-#include "UI/LevelMeterComponent.h"
+#include "UI/SegmentedPillComponent.h"
+#include "UI/PitchCorrectionRangeSlider.h"
 
 namespace toytune
 {
@@ -29,63 +30,38 @@ private:
     ToyTuneAudioProcessor& audioProcessor;
     ToyTuneLookAndFeel customLookAndFeel;
 
-    // Header
+    // 1. Top Header
     HeaderBarComponent headerBar;
 
-    // Central Pitch Workspace
-    PitchLaneComponent pitchLane;
+    // 2. Upper Selectors Row
+    juce::Label inputTypeLabel;
+    std::unique_ptr<SegmentedPillComponent> inputTypeSelector;
 
-    // Key & Scale Section
-    juce::GroupComponent scaleGroup;
-    juce::Label rootLabel;
+    juce::Label keyScaleLabel;
     juce::ComboBox rootKeyBox;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> rootKeyAttachment;
-
-    juce::Label scaleLabel;
     juce::ComboBox scaleTypeBox;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> scaleTypeAttachment;
 
-    juce::Label refPitchLabel;
-    juce::Slider refPitchSlider;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> refPitchAttachment;
+    juce::Label tuningModeLabel;
+    std::unique_ptr<SegmentedPillComponent> tuningModeSelector;
 
+    // 3. Middle Section
+    RotarySliderWithLabel retuneSpeedKnob;
+    CentralPitchDisplayComponent centralPitchDisplay;
+    RotarySliderWithLabel humanizeKnob;
+
+    // 4. Chromatic Keyboard Bar
     KeyboardScaleSelector keyboardSelector;
 
-    // Tuning Controls Section
-    juce::GroupComponent tuningGroup;
-    RotarySliderWithLabel retuneSpeedKnob;
-    RotarySliderWithLabel correctionStrengthKnob;
-    RotarySliderWithLabel pitchToleranceKnob;
-    RotarySliderWithLabel humanizeKnob;
+    // 5. Bottom Control Section
+    juce::Rectangle<int> bottomShelfBounds;
     RotarySliderWithLabel flexTuneKnob;
-    RotarySliderWithLabel vibratoPreserveKnob;
-
-    juce::Label modeLabel;
-    juce::ComboBox tuningModeBox;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> tuningModeAttachment;
-
-    // Bottom Utility Strip
-    juce::GroupComponent utilityGroup;
-    LevelMeterComponent inMeter;
-    LevelMeterComponent outMeter;
-
-    RotarySliderWithLabel inputGainKnob;
-    RotarySliderWithLabel outputGainKnob;
+    RotarySliderWithLabel vibratoKnob;
+    RotarySliderWithLabel formantKnob;
+    PitchCorrectionRangeSlider rangeSlider;
     RotarySliderWithLabel mixKnob;
-
-    juce::Label vocalRangeLabel;
-    juce::ComboBox vocalRangeBox;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> vocalRangeAttachment;
-
-    juce::ToggleButton formantPreserveBtn;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> formantPreserveAttachment;
-
-    RotarySliderWithLabel formantShiftKnob;
-
-    juce::ToggleButton lowLatencyBtn;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> lowLatencyAttachment;
-
-    juce::Label latencyDisplay;
+    RotarySliderWithLabel outputGainKnob;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ToyTuneAudioProcessorEditor)
 };

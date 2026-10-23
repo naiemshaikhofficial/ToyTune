@@ -41,6 +41,7 @@ juce_add_binary_data(ToyTuneResources
     SOURCES
         assets/branding/producer-toy-charcoal-logo.png
         assets/branding/toytune-wordmark.png
+        assets/branding/manager-bear-mascot.png
 )
 
 # ToyTune Plugin Target (VST3 and Standalone)
@@ -92,6 +93,9 @@ target_sources(ToyTune
         Source/UI/KeyboardScaleSelector.h
         Source/UI/LevelMeterComponent.h
         Source/UI/HeaderBarComponent.h
+        Source/UI/CentralPitchDisplayComponent.h
+        Source/UI/SegmentedPillComponent.h
+        Source/UI/PitchCorrectionRangeSlider.h
 )
 
 target_include_directories(ToyTune
