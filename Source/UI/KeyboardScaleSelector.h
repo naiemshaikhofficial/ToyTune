@@ -63,26 +63,38 @@ public:
             // Draw custom oval pill over the button
             if (isCurrentlySung)
             {
-                // Active Sung Note: Bright white glowing pill with dark text
-                g.setColour(juce::Colour(0x50ffffff));
-                g.fillRoundedRectangle(btnBounds.expanded(2.0f), btnBounds.getHeight() * 0.5f);
+                // Active Sung Note: Multi-stage neon bloom with solid white core
+                g.setColour(juce::Colour(0x25ffffff));
+                g.fillRoundedRectangle(btnBounds.expanded(4.5f), (btnBounds.getHeight() + 9.0f) * 0.5f);
+
+                g.setColour(juce::Colour(0x60ffffff));
+                g.fillRoundedRectangle(btnBounds.expanded(1.8f), (btnBounds.getHeight() + 3.6f) * 0.5f);
 
                 g.setColour(juce::Colour(0xffffffff));
                 g.fillRoundedRectangle(btnBounds, btnBounds.getHeight() * 0.5f);
 
-                g.setColour(juce::Colour(0xff0a0a0d));
+                g.setColour(juce::Colour(0xff090a0d));
                 g.setFont(juce::Font(juce::FontOptions(12.5f).withStyle("Bold")));
                 g.drawText(ToyTuneParameters::getRootNoteNames()[i], btnBounds, juce::Justification::centred, false);
             }
             else
             {
-                // Normal note pill
-                const juce::Colour bgCol = isSelectedInScale ? juce::Colour(0xff16171b) : juce::Colour(0xff0e0f12);
-                const juce::Colour borderCol = isSelectedInScale ? juce::Colour(0xff2d3039) : juce::Colour(0xff1a1b20);
-                const juce::Colour textCol = isSelectedInScale ? juce::Colour(0xffd5d8e2) : juce::Colour(0xff4a4c58);
+                // Normal note pill with subtle tactile glass highlight
+                const juce::Colour bgCol = isSelectedInScale ? juce::Colour(0xff16171c) : juce::Colour(0xff0e0f13);
+                const juce::Colour borderCol = isSelectedInScale ? juce::Colour(0xff323542) : juce::Colour(0xff1c1d24);
+                const juce::Colour textCol = isSelectedInScale ? juce::Colour(0xffe2e5f0) : juce::Colour(0xff4a4c58);
 
                 g.setColour(bgCol);
                 g.fillRoundedRectangle(btnBounds, btnBounds.getHeight() * 0.5f);
+
+                // Glass specular reflection on upper hemisphere
+                if (isSelectedInScale)
+                {
+                    const auto topGlass = juce::Rectangle<float>(btnBounds.getX() + 2.0f, btnBounds.getY() + 1.0f,
+                                                                btnBounds.getWidth() - 4.0f, btnBounds.getHeight() * 0.42f);
+                    g.setColour(juce::Colour(0x15ffffff));
+                    g.fillRoundedRectangle(topGlass, topGlass.getHeight() * 0.5f);
+                }
 
                 g.setColour(borderCol);
                 g.drawRoundedRectangle(btnBounds, btnBounds.getHeight() * 0.5f, 1.2f);

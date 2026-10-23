@@ -40,9 +40,6 @@ void ToyTuneLookAndFeel::drawRotarySlider(juce::Graphics& g,
     const auto radius = juce::jmin(bounds.getWidth(), bounds.getHeight()) * 0.5f;
     const auto centreX = bounds.getCentreX();
     const auto centreY = bounds.getCentreY();
-    const auto rx = centreX - radius;
-    const auto ry = centreY - radius;
-    const auto rw = radius * 2.0f;
 
     const float angle = rotaryStartAngle + sliderPosProportional * (rotaryEndAngle - rotaryStartAngle);
 
@@ -50,53 +47,84 @@ void ToyTuneLookAndFeel::drawRotarySlider(juce::Graphics& g,
     juce::Path trackBg;
     trackBg.addCentredArc(centreX, centreY, radius - 2.0f, radius - 2.0f,
                           0.0f, rotaryStartAngle, rotaryEndAngle, true);
-    g.setColour(juce::Colour(0xff1f1f24));
-    g.strokePath(trackBg, juce::PathStrokeType(3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.setColour(juce::Colour(0xff1f2128));
+    g.strokePath(trackBg, juce::PathStrokeType(2.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-    // 2. Active Track Value Arc
+    // 2. Active Track Value Arc with Optical Neon Bloom
     juce::Path trackActive;
     trackActive.addCentredArc(centreX, centreY, radius - 2.0f, radius - 2.0f,
                               0.0f, rotaryStartAngle, angle, true);
-    g.setColour(accentSilver);
-    g.strokePath(trackActive, juce::PathStrokeType(3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    
+    // Outer bloom
+    g.setColour(juce::Colour(0x35ffffff));
+    g.strokePath(trackActive, juce::PathStrokeType(6.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    // Core arc
+    g.setColour(accentWhite);
+    g.strokePath(trackActive, juce::PathStrokeType(2.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
     // 3. Drop Shadow for 3D depth
     const auto knobRadius = radius - 8.0f;
-    g.setColour(juce::Colour(0x60000000));
-    g.fillEllipse(centreX - knobRadius + 1.0f, centreY - knobRadius + 2.0f, knobRadius * 2.0f, knobRadius * 2.0f);
+    g.setColour(juce::Colour(0x80000000));
+    g.fillEllipse(centreX - knobRadius + 1.0f, centreY - knobRadius + 2.5f, knobRadius * 2.0f, knobRadius * 2.0f);
 
-    // 4. Outer Bezel
-    juce::ColourGradient bezelGrad(juce::Colour(0xff363640), centreX - knobRadius, centreY - knobRadius,
-                                   juce::Colour(0xff16161a), centreX + knobRadius, centreY + knobRadius, false);
+    // 4. Outer CNC Knurled Bezel
+    juce::ColourGradient bezelGrad(juce::Colour(0xff363842), centreX - knobRadius, centreY - knobRadius,
+                                   juce::Colour(0xff121316), centreX + knobRadius, centreY + knobRadius, false);
     g.setGradientFill(bezelGrad);
     g.fillEllipse(centreX - knobRadius, centreY - knobRadius, knobRadius * 2.0f, knobRadius * 2.0f);
 
-    // 5. Knob Face (Metallic brushed finish)
-    const auto innerRadius = knobRadius - 2.5f;
-    juce::ColourGradient faceGrad(juce::Colour(0xff222228), centreX, centreY - innerRadius,
-                                  juce::Colour(0xff121215), centreX, centreY + innerRadius, false);
+    // CNC Machined Gripping Notches around Dial Rim (32 micro-teeth)
+    const int numNotches = 32;
+    for (int i = 0; i < numNotches; ++i)
+    {
+        const float notchAngle = static_cast<float>(i) * (juce::MathConstants<float>::twoPi / static_cast<float>(numNotches));
+        const float cosA = std::cos(notchAngle);
+        const float sinA = std::sin(notchAngle);
+        g.setColour(juce::Colour(0x35000000));
+        g.drawLine(centreX + cosA * (knobRadius - 3.5f), centreY + sinA * (knobRadius - 3.5f),
+                   centreX + cosA * knobRadius, centreY + sinA * knobRadius, 1.2f);
+    }
+
+    // 5. Knob Face (Anodized Lathe Machined Texture)
+    const auto innerRadius = knobRadius - 3.0f;
+    juce::ColourGradient faceGrad(juce::Colour(0xff22242c), centreX, centreY - innerRadius,
+                                  juce::Colour(0xff0f1013), centreX, centreY + innerRadius, false);
     g.setGradientFill(faceGrad);
     g.fillEllipse(centreX - innerRadius, centreY - innerRadius, innerRadius * 2.0f, innerRadius * 2.0f);
 
-    // 6. Subtle inner rim outline
-    g.setColour(juce::Colour(0x30ffffff));
+    // Lathe micro-grooves (concentric machined aerospace rings)
+    g.setColour(juce::Colour(0x15ffffff));
+    g.drawEllipse(centreX - innerRadius * 0.75f, centreY - innerRadius * 0.75f, innerRadius * 1.5f, innerRadius * 1.5f, 0.7f);
+    g.drawEllipse(centreX - innerRadius * 0.45f, centreY - innerRadius * 0.45f, innerRadius * 0.9f, innerRadius * 0.9f, 0.7f);
+
+    // Subtle inner rim bevel outline
+    g.setColour(juce::Colour(0x40ffffff));
     g.drawEllipse(centreX - innerRadius, centreY - innerRadius, innerRadius * 2.0f, innerRadius * 2.0f, 1.0f);
 
-    // 7. Metallic Indicator Needle / Pointer
+    // 6. Futuristic Laser Indicator Needle
     juce::Path p;
     const float pointerLength = innerRadius * 0.75f;
-    const float pointerThickness = 2.2f;
-    p.addRoundedRectangle(-pointerThickness * 0.5f, -innerRadius + 3.0f, pointerThickness, pointerLength, 1.0f);
+    const float pointerThickness = 2.4f;
+    p.addRoundedRectangle(-pointerThickness * 0.5f, -innerRadius + 2.5f, pointerThickness, pointerLength, 1.0f);
     p.applyTransform(juce::AffineTransform::rotation(angle).translated(centreX, centreY));
 
-    g.setColour(knobPointer);
+    // Pointer Bloom
+    g.setColour(juce::Colour(0x50ffffff));
+    g.strokePath(p, juce::PathStrokeType(4.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.setColour(accentWhite);
     g.fillPath(p);
 
-    // Center jewel pin
-    g.setColour(juce::Colour(0xff0a0a0c));
-    g.fillEllipse(centreX - 3.0f, centreY - 3.0f, 6.0f, 6.0f);
-    g.setColour(juce::Colour(0x60ffffff));
-    g.drawEllipse(centreX - 3.0f, centreY - 3.0f, 6.0f, 6.0f, 1.0f);
+    // Glowing tip pip
+    const float tipX = centreX + std::sin(angle) * (innerRadius - 4.0f);
+    const float tipY = centreY - std::cos(angle) * (innerRadius - 4.0f);
+    g.setColour(juce::Colour(0xffffffff));
+    g.fillEllipse(tipX - 1.8f, tipY - 1.8f, 3.6f, 3.6f);
+
+    // Center machined spindle
+    g.setColour(juce::Colour(0xff09090b));
+    g.fillEllipse(centreX - 3.2f, centreY - 3.2f, 6.4f, 6.4f);
+    g.setColour(juce::Colour(0x70ffffff));
+    g.drawEllipse(centreX - 3.2f, centreY - 3.2f, 6.4f, 6.4f, 1.0f);
 }
 
 void ToyTuneLookAndFeel::drawComboBox(juce::Graphics& g, int width, int height, bool /*isButtonDown*/,
@@ -146,8 +174,9 @@ void ToyTuneLookAndFeel::drawToggleButton(juce::Graphics& g, juce::ToggleButton&
         g.fillRoundedRectangle(inner, 1.5f);
     }
 
+    juce::ignoreUnused(shouldDrawButtonAsHighlighted);
     g.setColour(button.isEnabled() ? accentWhite : textMuted);
-    g.setFont(juce::Font(12.0f, juce::Font::plain));
+    g.setFont(juce::Font(juce::FontOptions(12.0f)));
     g.drawFittedText(button.getButtonText(),
                      static_cast<int>(boxBounds.getRight() + 6.0f),
                      0,
@@ -207,7 +236,7 @@ void ToyTuneLookAndFeel::drawPopupMenuItem(juce::Graphics& g, const juce::Rectan
     }
 
     g.setColour(isActive ? (isTicked ? accentWhite : accentSilver) : textMuted);
-    g.setFont(juce::Font(12.5f, isTicked ? juce::Font::bold : juce::Font::plain));
+    g.setFont(juce::Font(juce::FontOptions(12.5f).withStyle(isTicked ? "Bold" : "Regular")));
 
     auto textArea = area.reduced(10, 0);
     g.drawFittedText(text, textArea, juce::Justification::centredLeft, 1);
