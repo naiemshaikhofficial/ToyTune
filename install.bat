@@ -1,41 +1,69 @@
 @echo off
+setlocal
+
 echo ========================================================
-echo   ToyTune by Producer Toy - VST3 Installer
+echo   Updating ToyTune VST3 in Common Files...
+echo   Please ensure FL Studio or your DAW is closed before running!
 echo ========================================================
 echo.
 
-set SOURCE_VST3=%~dp0build\ToyTune_artefacts\Release\VST3\ToyTune.vst3
-set TARGET_DIR=C:\Program Files\Common Files\VST3\Producer Toy
-set USER_VST3=%LOCALAPPDATA%\Programs\Common\VST3\Producer Toy
+set "SRC_DIR=%~dp0build\ToyTune_artefacts\Release\VST3\ToyTune.vst3"
+set "DST_DIR1=C:\Program Files\Common Files\VST3\ToyTune.vst3"
+set "DST_DIR2=C:\Program Files\Common Files\VST3\Producer Toy\ToyTune.vst3"
 
-if not exist "%SOURCE_VST3%" (
-    echo [ERROR] ToyTune.vst3 build not found!
-    echo Please compile the plugin first using CMake or build_release.bat
+if not exist "%SRC_DIR%" (
+    echo [ERROR] Release VST3 bundle not found at:
+    echo "%SRC_DIR%"
+    echo Please compile ToyTune first!
+    echo.
     pause
     exit /b 1
 )
 
-echo [1/2] Installing to User VST3 directory...
-if not exist "%USER_VST3%" mkdir "%USER_VST3%"
-xcopy /E /I /Y /Q "%SOURCE_VST3%" "%USER_VST3%\ToyTune.vst3"
-echo       Installed in: %USER_VST3%\ToyTune.vst3
-
-echo.
-echo [2/2] Attempting install to System VST3 (Program Files)...
+:: Check for Administrative Privileges
 net session >nul 2>&1
-if %errorlevel% == 0 (
-    if not exist "%TARGET_DIR%" mkdir "%TARGET_DIR%"
-    xcopy /E /I /Y /Q "%SOURCE_VST3%" "%TARGET_DIR%\ToyTune.vst3"
-    echo       Installed in: %TARGET_DIR%\ToyTune.vst3
-) else (
-    echo       [NOTE] To install to System Program Files directory as well,
-    echo              Right-click this 'install.bat' and select 'Run as administrator'.
+if %ERRORLEVEL% NEQ 0 (
+    if "%1"=="-elevated" (
+        echo [ERROR] Administrative rights could not be obtained.
+        echo Please right-click on this script and select 'Run as administrator'.
+        pause
+        exit /b 1
+    )
+    echo [INFO] Administrative permissions required to copy to Common Files\VST3.
+    echo [INFO] Requesting administrator elevation...
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process cmd -ArgumentList '/c \"\"%~f0\"\" -elevated' -Verb RunAs"
+    if %ERRORLEVEL% EQU 0 exit /b 0
+    echo.
+    echo [NOTICE] Elevation request was cancelled or unavailable.
+    echo Please right-click on this file and choose 'Run as administrator'.
+    pause
+    exit /b 1
 )
 
-echo.
-echo ========================================================
-echo   ToyTune VST3 installation complete!
-echo   Open your DAW (FL Studio, Ableton, Cubase, etc.)
-echo   and perform a Plugin Rescan.
-echo ========================================================
-pause
+echo Copying VST3 bundle to "%DST_DIR1%"...
+xcopy /E /Y /I /Q "%SRC_DIR%" "%DST_DIR1%"
+
+echo Copying VST3 bundle to "%DST_DIR2%"...
+xcopy /E /Y /I /Q "%SRC_DIR%" "%DST_DIR2%"
+
+if %ERRORLEVEL% EQU 0 (
+    echo.
+    echo [SUCCESS] ToyTune VST3 installed successfully!
+    echo Destinations:
+    echo   - "%DST_DIR1%"
+    echo   - "%DST_DIR2%"
+    echo.
+    echo You can now launch FL Studio and click 'Find installed plugins'.
+) else (
+    echo.
+    echo [ERROR] Copy failed. If a file is locked, please close FL Studio and re-run.
+)
+
+if "%1"=="-elevated" (
+    echo.
+    echo Closing in 3 seconds...
+    timeout /t 3 >nul
+) else (
+    echo.
+    pause
+)
