@@ -36,7 +36,7 @@ public:
         }
     }
 
-    TargetPitchResult resolveTarget(const ScaleEngine& scaleEngine, float inputMidiNote) const
+    TargetPitchResult resolveTarget(const ScaleEngine& scaleEngine, float inputMidiNote)
     {
         if (hasActiveMidiNote.load(std::memory_order_relaxed))
         {
@@ -48,21 +48,43 @@ public:
             res.targetSemitone = (targetNote % 12 + 12) % 12;
             res.targetOctave = (targetNote / 12) - 1;
             res.noteName = ScaleEngine::getNoteNameWithOctave(targetNote);
+            lastTargetNote = res;
+            hasValidTarget = true;
             return res;
         }
 
-        return scaleEngine.calculateTarget(inputMidiNote);
+        // Hysteresis Note Latching (Waves Tune Real-Time Anti-Chatter):
+        // If we already have an active target note in scale and the vocal pitch is within +/- 58 cents,
+        // stay locked to it to prevent rapid ping-pong jitter on borderline microtones.
+        if (hasValidTarget && scaleEngine.isSemitoneActive(lastTargetNote.targetSemitone))
+        {
+            const float deviationFromCurrent = (lastTargetNote.targetMidiNote - inputMidiNote) * 100.0f;
+            if (std::abs(deviationFromCurrent) < 58.0f)
+            {
+                TargetPitchResult res = lastTargetNote;
+                res.centsDeviation = deviationFromCurrent;
+                return res;
+            }
+        }
+
+        const auto newTarget = scaleEngine.calculateTarget(inputMidiNote);
+        lastTargetNote = newTarget;
+        hasValidTarget = true;
+        return newTarget;
     }
 
     void reset()
     {
         hasActiveMidiNote.store(false, std::memory_order_relaxed);
         lastMidiNoteOn.store(60, std::memory_order_relaxed);
+        hasValidTarget = false;
     }
 
 private:
     std::atomic<int> lastMidiNoteOn { 60 };
     std::atomic<bool> hasActiveMidiNote { false };
+    TargetPitchResult lastTargetNote;
+    bool hasValidTarget { false };
 };
 
 } // namespace toytune
