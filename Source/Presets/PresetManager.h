@@ -11,7 +11,6 @@ struct Preset
 {
     juce::String name;
     float retuneSpeed { 0.0f };
-    float noteTransition { 50.0f };
     float strength { 100.0f };
     float tolerance { 0.0f };
     float humanize { 0.0f };

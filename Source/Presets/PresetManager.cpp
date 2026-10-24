@@ -18,7 +18,6 @@ void PresetManager::initFactoryPresets()
     factoryPresets.push_back({
         "Default",
         0.0f,   // retuneSpeed = 0 (No auto-tune applied)
-        50.0f,  // noteTransition = 50%
         100.0f, // strength
         0.0f,   // tolerance = 0
         0.0f,   // humanize = 0
@@ -34,13 +33,12 @@ void PresetManager::initFactoryPresets()
     // 1. Modern Pop
     factoryPresets.push_back({
         "Modern Pop",
-        75.0f,  // retuneSpeed (~20 ms, tight modern pop)
-        60.0f,  // noteTransition (Natural legato glide)
+        85.0f,  // retuneSpeed (Fast, modern)
         100.0f, // strength
         5.0f,   // tolerance
-        30.0f,  // humanize (sustained note relaxation)
-        25.0f,  // flexTune (natural expressive bends)
-        25.0f,  // vibratoPreserve (natural vibrato intact)
+        10.0f,  // humanize
+        15.0f,  // flexTune
+        0.0f,   // vibratoPreserve
         1,      // Modern mode
         0,      // C
         1,      // Major
@@ -51,13 +49,12 @@ void PresetManager::initFactoryPresets()
     // 2. Fast Pop Tune
     factoryPresets.push_back({
         "Fast Pop Tune",
-        90.0f,  // retuneSpeed (Snappy modern pop)
-        45.0f,  // noteTransition
+        95.0f,  // retuneSpeed (Very fast snap)
         100.0f, // strength
         0.0f,   // tolerance
-        15.0f,  // humanize
-        15.0f,  // flexTune
-        15.0f,  // vibratoPreserve
+        0.0f,   // humanize
+        5.0f,   // flexTune
+        0.0f,   // vibratoPreserve
         1,      // Modern mode
         0,      // C
         1,      // Major
@@ -69,7 +66,6 @@ void PresetManager::initFactoryPresets()
     factoryPresets.push_back({
         "Hard Tune",
         100.0f, // retuneSpeed (Instant maximum hard snap)
-        0.0f,   // noteTransition (Instant note jump)
         100.0f, // strength
         0.0f,   // tolerance
         0.0f,   // humanize
@@ -86,7 +82,6 @@ void PresetManager::initFactoryPresets()
     factoryPresets.push_back({
         "Robot Vocal",
         100.0f, // retuneSpeed (100% hard snap)
-        0.0f,   // noteTransition (Instant note jump)
         100.0f,
         0.0f,
         0.0f,
@@ -102,13 +97,12 @@ void PresetManager::initFactoryPresets()
     // 5. Natural Vocal
     factoryPresets.push_back({
         "Natural Vocal",
-        48.0f,  // retuneSpeed (~50 ms, Antares natural vocal golden standard)
-        70.0f,  // noteTransition (Fluid natural slides)
-        90.0f,  // strength
-        10.0f,  // tolerance
-        50.0f,  // humanize (sustained note organic breathing)
-        35.0f,  // flexTune (expressive bends pass through)
-        40.0f,  // vibratoPreserve (natural vocal vibrato)
+        50.0f,  // retuneSpeed (Smooth, melodious)
+        80.0f,  // strength
+        15.0f,  // tolerance
+        35.0f,  // humanize
+        40.0f,  // flexTune
+        0.0f,   // vibratoPreserve
         1,      // Modern mode
         0,      // C
         0,      // Chromatic
@@ -119,13 +113,12 @@ void PresetManager::initFactoryPresets()
     // 6. Subtle Correction
     factoryPresets.push_back({
         "Subtle Correction",
-        25.0f,  // retuneSpeed (~80 ms, gentle transparent correction)
-        80.0f,  // noteTransition
-        75.0f,
-        20.0f,
+        25.0f,  // retuneSpeed (Gentle, subtle)
+        60.0f,
+        25.0f,
         60.0f,
         50.0f,
-        50.0f,  // vibratoPreserve
+        0.0f,
         1,      // Modern mode
         0,
         0,      // Chromatic
@@ -137,7 +130,6 @@ void PresetManager::initFactoryPresets()
     factoryPresets.push_back({
         "Manual Scale",
         20.0f,
-        50.0f,  // noteTransition
         100.0f,
         0.0f,
         10.0f,
@@ -177,7 +169,6 @@ void PresetManager::applyPreset(int index)
     const auto& p = factoryPresets[static_cast<size_t>(index)];
 
     setParameterValue(ParameterIDs::retuneSpeed, p.retuneSpeed);
-    setParameterValue(ParameterIDs::noteTransition, p.noteTransition);
     setParameterValue(ParameterIDs::correctionStrength, p.strength);
     setParameterValue(ParameterIDs::pitchTolerance, p.tolerance);
     setParameterValue(ParameterIDs::humanize, p.humanize);

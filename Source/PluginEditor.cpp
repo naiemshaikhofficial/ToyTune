@@ -8,8 +8,7 @@ ToyTuneAudioProcessorEditor::ToyTuneAudioProcessorEditor(ToyTuneAudioProcessor& 
     : AudioProcessorEditor(&p),
       audioProcessor(p),
       headerBar(audioProcessor.getAPVTS(), audioProcessor.getPresetManager()),
-      retuneSpeedKnob("Retune Speed", "", false, false),
-      noteTransitionKnob("Transition", "", false, false),
+      retuneSpeedKnob("Retune Speed", "", false, true),
       centralPitchDisplay(audioProcessor.getTelemetry()),
       humanizeKnob("Humanize", "", false, true),
       keyboardSelector(audioProcessor.getAPVTS()),
@@ -75,9 +74,6 @@ ToyTuneAudioProcessorEditor::ToyTuneAudioProcessorEditor(ToyTuneAudioProcessor& 
     // 3. Middle Section
     retuneSpeedKnob.attachToParameter(audioProcessor.getAPVTS(), ParameterIDs::retuneSpeed);
     addAndMakeVisible(retuneSpeedKnob);
-
-    noteTransitionKnob.attachToParameter(audioProcessor.getAPVTS(), ParameterIDs::noteTransition);
-    addAndMakeVisible(noteTransitionKnob);
 
     addAndMakeVisible(centralPitchDisplay);
 
@@ -197,8 +193,8 @@ void ToyTuneAudioProcessorEditor::paint(juce::Graphics& g)
     const float gripStartX_L = bounds.getX() + juce::jlimit(16.0f, 26.0f, bounds.getWidth() * 0.018f);
     const float gripStartX_R = bounds.getRight() - juce::jlimit(16.0f, 26.0f, bounds.getWidth() * 0.018f);
 
-    // Upper Grip Lines (Centered vertically beside Left Tuning Card and Humanize Card)
-    const float upperCenterY = static_cast<float>(leftTuningCardBounds.getCentreY());
+    // Upper Grip Lines (Centered vertically beside Retune Speed and Humanize cards)
+    const float upperCenterY = static_cast<float>(retuneSpeedKnob.getY() + retuneSpeedKnob.getHeight() / 2);
     for (int i = 0; i < 5; ++i)
     {
         const float y = upperCenterY - 24.0f + static_cast<float>(i) * 12.0f;
@@ -216,13 +212,6 @@ void ToyTuneAudioProcessorEditor::paint(juce::Graphics& g)
         g.drawLine(gripStartX_L - 8.0f, y + 10.0f, gripStartX_L + 2.0f, y - 2.0f, 2.2f);
         g.drawLine(gripStartX_R - 2.0f, y + 10.0f, gripStartX_R + 8.0f, y - 2.0f, 2.2f);
     }
-
-    // 2b. Left Tuning Card Background (Retune Speed on Top, Note Transition on Bottom)
-    const auto tuningCardRect = leftTuningCardBounds.toFloat();
-    g.setColour(juce::Colour(0xff101114));
-    g.fillRoundedRectangle(tuningCardRect, 12.0f);
-    g.setColour(juce::Colour(0xff1e2027));
-    g.drawRoundedRectangle(tuningCardRect, 12.0f, 1.2f);
 
     // 3. Bottom Control Shelf Background Card
     const auto shelfRect = bottomShelfBounds.toFloat();
@@ -294,21 +283,8 @@ void ToyTuneAudioProcessorEditor::resized()
     const int midH = std::max(180, kbY - kbGap - midY);
     const int cardW = juce::jlimit(142, 200, static_cast<int>(W * 0.142f));
 
-    // Left Card: Retune Speed on Top, Note Transition on Bottom
-    leftTuningCardBounds = juce::Rectangle<int>(sideMargin, midY, cardW, midH);
-    const int cardInnerPad = juce::jlimit(4, 8, static_cast<int>(cardW * 0.04f));
-    const int cardContentW = cardW - 2 * cardInnerPad;
-    const int singleKnobH = (midH - 3 * cardInnerPad) / 2;
-
-    retuneSpeedKnob.setBounds(sideMargin + cardInnerPad,
-                              midY + cardInnerPad,
-                              cardContentW,
-                              singleKnobH);
-
-    noteTransitionKnob.setBounds(sideMargin + cardInnerPad,
-                                 midY + cardInnerPad * 2 + singleKnobH,
-                                 cardContentW,
-                                 singleKnobH);
+    // Left Card: Retune Speed
+    retuneSpeedKnob.setBounds(sideMargin, midY, cardW, midH);
 
     // Right Card: Humanize
     humanizeKnob.setBounds(modeX + modeW - cardW, midY, cardW, midH);

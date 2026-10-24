@@ -93,13 +93,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout ToyTuneParameters::createPar
         juce::AudioParameterFloatAttributes().withLabel("%")));
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID { ParameterIDs::noteTransition, 1 },
-        "Note Transition",
-        juce::NormalisableRange<float>(0.0f, 100.0f, 1.0f),
-        50.0f,
-        juce::AudioParameterFloatAttributes().withLabel("%")));
-
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { ParameterIDs::correctionStrength, 1 },
         "Correction Strength",
         juce::NormalisableRange<float>(0.0f, 100.0f, 0.5f),

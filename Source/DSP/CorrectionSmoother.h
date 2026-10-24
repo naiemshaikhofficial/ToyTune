@@ -33,16 +33,8 @@ public:
      * @param numSamples Current block size for time-step smoothing.
      * @return Multiplicative pitch shift ratio (e.g. 1.0 = no shift, 1.05946 = +1 semitone).
      */
-    /**
-     * Compute the smoothed pitch shift ratio to apply to the PitchShifter.
-     * Decoupled Dual-Ballistics Architecture (Waves Tune / Auto-Tune Pro standard):
-     * - Stage 1: Inter-note transition slew (governed by noteTransitionPct)
-     * - Stage 2: Intra-note retune ballistics (governed by retuneSpeedMs)
-     */
     float processBlock(float rawDeviationCents,
-                       float targetMidiNote,
                        float retuneSpeedMs,
-                       float noteTransitionPct,
                        float strengthPct,
                        float toleranceCents,
                        float humanizePct,
@@ -54,45 +46,24 @@ public:
         if (!std::isfinite(rawDeviationCents))
             rawDeviationCents = 0.0f;
 
-        // 0. If Retune Speed is 0 (and not in HardTune/Robot mode), completely bypass pitch shift
-        if (retuneSpeedMs <= 0.001f && mode != TuningModeType::HardTune && mode != TuningModeType::Robot)
+        // 0. If Retune Speed is 0, completely bypass pitch shift (clean original dry voice)
+        if (retuneSpeedMs <= 0.001f)
         {
             stage1Cents = 0.0f;
             smoothedPitchShiftCents = 0.0f;
             return 1.0f;
         }
 
-        const float dtSeconds = static_cast<float>(numSamples) / static_cast<float>(sampleRate);
         const float speedNorm = juce::jlimit(0.0f, 100.0f, retuneSpeedMs) / 100.0f;
 
-        // Musical response curve matching Antares Auto-Tune & Waves Tune:
-        // Wide, forgiving sweet spot between 35ms and 80ms in the middle range:
-        float effectiveRetuneSpeed = 0.0f;
-        if (speedNorm >= 0.95f)
-        {
-            // 95% - 100%: Hard Tune snap zone (0 to 3.5 ms)
-            const float t = (1.0f - speedNorm) / 0.05f;
-            effectiveRetuneSpeed = t * 3.5f;
-        }
-        else if (speedNorm >= 0.60f)
-        {
-            // 60% - 95%: Modern pop vocal zone (3.5 ms to 35 ms)
-            const float t = (0.95f - speedNorm) / 0.35f;
-            effectiveRetuneSpeed = 3.5f + t * 31.5f;
-        }
-        else if (speedNorm >= 0.20f)
-        {
-            // 20% - 60%: Antares Natural Vocal Sweet Spot (35 ms to 85 ms)
-            const float t = (0.60f - speedNorm) / 0.40f;
-            effectiveRetuneSpeed = 35.0f + t * 50.0f;
-        }
-        else
-        {
-            // 0% - 20%: Transparent gentle correction (85 ms to 220 ms)
-            const float t = (0.20f - speedNorm) / 0.20f;
-            effectiveRetuneSpeed = 85.0f + t * 135.0f;
-        }
-
+        // Inverted response curve:
+        // 100 on knob -> 0.0 ms (instant hard tune snap / maximum auto-tune)
+        // 90 on knob  -> ~2.8 ms (very fast pop autotune)
+        // 75 on knob  -> ~17.5 ms (modern pop vocal tune)
+        // 50 on knob  -> ~70 ms (natural melodious vocal)
+        // 20 on knob  -> ~180 ms (subtle gentle correction)
+        const float inv = 1.0f - speedNorm;
+        float effectiveRetuneSpeed = inv * inv * 280.0f;
         float effectiveHumanize = humanizePct;
         float effectiveFlexTune = flexTunePct;
 
@@ -106,6 +77,7 @@ public:
                 effectiveFlexTune = 0.0f;
                 break;
             case TuningModeType::Natural: // Classic Mode (Auto-Tune 5 architecture)
+                // Flex-Tune was not in Auto-Tune 5, so it is strictly disabled in Classic mode
                 effectiveFlexTune = 0.0f;
                 break;
             case TuningModeType::Modern:
@@ -113,144 +85,89 @@ public:
                 break;
         }
 
-        // 2. Deadband / Pitch Tolerance with soft-knee transition
-        float targetShiftCents = rawDeviationCents;
-        if (toleranceCents > 0.1f)
+        // 2. Deadband / Pitch Tolerance & Intensity Scaling
+        float targetShiftCents = rawDeviationCents * std::min(1.0f, speedNorm * 1.05f);
+        if (std::abs(targetShiftCents) <= toleranceCents)
         {
-            const float absShift = std::abs(targetShiftCents);
-            if (absShift <= toleranceCents)
-            {
-                targetShiftCents = 0.0f;
-            }
-            else
-            {
-                const float sign = (targetShiftCents > 0.0f) ? 1.0f : -1.0f;
-                targetShiftCents = sign * (absShift - toleranceCents);
-            }
+            targetShiftCents = 0.0f;
+        }
+        else if (targetShiftCents > 0.0f)
+        {
+            targetShiftCents -= toleranceCents;
+        }
+        else
+        {
+            targetShiftCents += toleranceCents;
         }
 
-        // 3. Humanize Soft-Knee (preserves tiny micro-vocal inflections within ~16 cents)
+        // 3. Humanize Soft-Knee (preserves tiny micro-vocal inflections within ~15 cents)
         if (effectiveHumanize > 0.0f)
         {
-            const float knee = (effectiveHumanize / 100.0f) * 16.0f;
-            const float absShift = std::abs(targetShiftCents);
-            if (absShift < knee && knee > 0.1f)
+            const float knee = (effectiveHumanize / 100.0f) * 18.0f;
+            if (std::abs(targetShiftCents) < knee)
             {
-                const float factor = std::pow(absShift / knee, 1.6f);
+                const float factor = std::pow(std::abs(targetShiftCents) / knee, 2.0f);
                 targetShiftCents *= factor;
             }
         }
 
-        // 4. Flex-Tune (Antares Auto-Tune architecture):
-        // Pulls pitch when close to the target note (< 22 cents), but smoothly relaxes correction
-        // on expressive vocal bends, blue notes, and microtonal phrasing (> 22 cents)
+        // 4. Flex Tune (resists rapid transient pulls unless settled - bypassed in Classic mode)
         if (effectiveFlexTune > 0.0f)
         {
-            const float flexAmt = effectiveFlexTune / 100.0f;
-            const float absDev = std::abs(rawDeviationCents);
-            if (absDev > 22.0f)
+            const float diffFromPrev = std::abs(targetShiftCents - previousTargetCents);
+            if (diffFromPrev > 60.0f) // Large pitch leap
             {
-                const float falloff = juce::jlimit(0.0f, 1.0f, (absDev - 22.0f) / 55.0f);
-                const float damping = 1.0f - (flexAmt * 0.70f * falloff);
-                targetShiftCents *= damping;
+                const float flexDamping = 1.0f - (effectiveFlexTune / 100.0f) * 0.7f;
+                targetShiftCents *= flexDamping;
             }
         }
         previousTargetCents = targetShiftCents;
 
         // 5. Advanced Vibrato Preservation (Unconditionally Stable Biquad Bandpass)
+        const float dtSeconds = static_cast<float>(numSamples) / static_cast<float>(sampleRate);
         if (vibratoPreservePct > 0.0f)
         {
             const float bpOutput = updateVibratoBandpass(rawDeviationCents);
             targetShiftCents += bpOutput * (vibratoPreservePct / 100.0f);
         }
 
-        // 6. Sustained Note Humanizer (Antares Auto-Tune sustained vowel relaxation)
-        if (targetMidiNote > 10.0f && std::abs(targetMidiNote - heldTargetMidi) < 0.1f)
+        // 6. Sustained Note Humanizer (differentiates fast melisma runs from held notes)
+        if (effectiveHumanize > 0.0f)
         {
-            heldNoteDurationMs += dtSeconds * 1000.0f;
+            if (std::abs(rawDeviationCents - lastRawDeviation) < 40.0f)
+            {
+                heldNoteDurationMs += dtSeconds * 1000.0f;
+            }
+            else
+            {
+                heldNoteDurationMs = 0.0f;
+            }
+            lastRawDeviation = rawDeviationCents;
+
+            if (heldNoteDurationMs > 150.0f)
+            {
+                const float relax = (effectiveHumanize / 100.0f) * std::min(45.0f, (heldNoteDurationMs - 150.0f) * 0.1f);
+                effectiveRetuneSpeed += relax;
+            }
         }
         else
         {
             heldNoteDurationMs = 0.0f;
-            heldTargetMidi = targetMidiNote;
-        }
-
-        if (effectiveHumanize > 0.0f && heldNoteDurationMs > 100.0f)
-        {
-            const float humanizeFactor = effectiveHumanize / 100.0f;
-            const float relax = humanizeFactor * std::min(75.0f, (heldNoteDurationMs - 100.0f) * 0.18f);
-            effectiveRetuneSpeed += relax;
+            lastRawDeviation = rawDeviationCents;
         }
 
         // 7. Correction Strength Scaling
         targetShiftCents *= (juce::jlimit(0.0f, 100.0f, strengthPct) / 100.0f);
+
+        // 8. Critically Damped 2nd-Order S-Curve Retune Ballistics (Auto-Tune / Waves Tune standard)
+        // Discretized via exact analytical 2-pole cascaded filter (unconditionally stable for all tau >= 0)
         targetShiftCents = juce::jlimit(-400.0f, 400.0f, targetShiftCents);
 
-        // --- 8. Note Transition Slew Architecture (Waves Tune Decoupled Legato Glide) ---
-        float effectiveTargetShift = targetShiftCents;
-
-        if (targetMidiNote > 10.0f)
-        {
-            if (!hasActiveTarget)
-            {
-                // First voiced onset: lock target immediately without transition (NO WOOP!)
-                previousTargetMidi = targetMidiNote;
-                hasActiveTarget = true;
-                isTransitioning = false;
-                currentTransitionShift = targetShiftCents;
-            }
-            else if (std::abs(targetMidiNote - previousTargetMidi) > 0.01f)
-            {
-                // Target scale note changed from previous note
-                previousTargetMidi = targetMidiNote;
-
-                const float transNorm = juce::jlimit(0.0f, 100.0f, noteTransitionPct) / 100.0f;
-                const bool isInstant = (transNorm <= 0.01f || mode == TuningModeType::HardTune || mode == TuningModeType::Robot);
-
-                if (isInstant)
-                {
-                    isTransitioning = false;
-                    currentTransitionShift = targetShiftCents;
-                }
-                else
-                {
-                    // Start smooth legato transition between the note corrections
-                    isTransitioning = true;
-                    transitionTimer = 0.0f;
-                    // Transition duration: 10 ms to 140 ms
-                    transitionDuration = std::max(0.010f, transNorm * 0.140f);
-                    transitionStartShift = currentTransitionShift;
-                }
-            }
-        }
-
-        if (isTransitioning)
-        {
-            transitionTimer += dtSeconds;
-            const float progress = juce::jlimit(0.0f, 1.0f, transitionTimer / transitionDuration);
-            // Raised-cosine S-curve for ultra-smooth organic legato glide
-            const float s = 0.5f - 0.5f * std::cos(progress * juce::MathConstants<float>::pi);
-            currentTransitionShift = transitionStartShift + (targetShiftCents - transitionStartShift) * s;
-
-            if (progress >= 1.0f)
-                isTransitioning = false;
-
-            effectiveTargetShift = currentTransitionShift;
-        }
-        else
-        {
-            currentTransitionShift = targetShiftCents;
-            effectiveTargetShift = targetShiftCents;
-        }
-
-        effectiveTargetShift = juce::jlimit(-400.0f, 400.0f, effectiveTargetShift);
-
-        // --- 9. Retune Ballistics (Analytical Critically Damped 2-Pole S-Curve) ---
         if (effectiveRetuneSpeed <= 0.1f)
         {
             // Instant snap: zero delay, zero lag (Hard Tune / Travis Scott effect)
-            stage1Cents = effectiveTargetShift;
-            smoothedPitchShiftCents = effectiveTargetShift;
+            stage1Cents = targetShiftCents;
+            smoothedPitchShiftCents = targetShiftCents;
         }
         else
         {
@@ -260,19 +177,19 @@ public:
             const float tauStage = std::max(1e-4f, tau * 0.5f);
             const float alpha = 1.0f - std::exp(-dtSeconds / tauStage);
 
-            stage1Cents += alpha * (effectiveTargetShift - stage1Cents);
+            stage1Cents += alpha * (targetShiftCents - stage1Cents);
             smoothedPitchShiftCents += alpha * (stage1Cents - smoothedPitchShiftCents);
 
             if (!std::isfinite(smoothedPitchShiftCents) || !std::isfinite(stage1Cents))
             {
-                stage1Cents = effectiveTargetShift;
-                smoothedPitchShiftCents = effectiveTargetShift;
+                stage1Cents = targetShiftCents;
+                smoothedPitchShiftCents = targetShiftCents;
             }
         }
 
         smoothedPitchShiftCents = juce::jlimit(-400.0f, 400.0f, smoothedPitchShiftCents);
 
-        // 10. Convert cents to pitch transposition ratio: ratio = 2^(cents / 1200)
+        // 9. Convert cents to pitch transposition ratio: ratio = 2^(cents / 1200)
         float pitchRatio = std::pow(2.0f, smoothedPitchShiftCents / 1200.0f);
         if (!std::isfinite(pitchRatio) || pitchRatio <= 0.0f)
             pitchRatio = 1.0f;
@@ -280,32 +197,7 @@ public:
         return juce::jlimit(0.25f, 4.0f, pitchRatio);
     }
 
-    /**
-     * Backward-compatible overload for existing callers without target note / transition.
-     */
-    float processBlock(float rawDeviationCents,
-                       float retuneSpeedMs,
-                       float strengthPct,
-                       float toleranceCents,
-                       float humanizePct,
-                       float flexTunePct,
-                       float vibratoPreservePct,
-                       TuningModeType mode,
-                       int numSamples)
-    {
-        return processBlock(rawDeviationCents, 0.0f, retuneSpeedMs, 50.0f, strengthPct,
-                            toleranceCents, humanizePct, flexTunePct, vibratoPreservePct, mode, numSamples);
-    }
-
     float getSmoothedShiftCents() const noexcept { return smoothedPitchShiftCents; }
-
-    void onUnvoiced()
-    {
-        stage1Cents = 0.0f;
-        smoothedPitchShiftCents = 0.0f;
-        isTransitioning = false;
-        hasActiveTarget = false;
-    }
 
     void reset()
     {
@@ -314,14 +206,6 @@ public:
         previousTargetCents = 0.0f;
         lastRawDeviation = 0.0f;
         heldNoteDurationMs = 0.0f;
-        heldTargetMidi = 0.0f;
-        previousTargetMidi = 0.0f;
-        hasActiveTarget = false;
-        isTransitioning = false;
-        transitionTimer = 0.0f;
-        transitionDuration = 0.05f;
-        transitionStartShift = 0.0f;
-        currentTransitionShift = 0.0f;
         bq_s1 = 0.0f;
         bq_s2 = 0.0f;
     }
@@ -333,14 +217,6 @@ private:
     float previousTargetCents { 0.0f };
     float lastRawDeviation { 0.0f };
     float heldNoteDurationMs { 0.0f };
-    float heldTargetMidi { 0.0f };
-    float previousTargetMidi { 0.0f };
-    bool hasActiveTarget { false };
-    bool isTransitioning { false };
-    float transitionTimer { 0.0f };
-    float transitionDuration { 0.05f };
-    float transitionStartShift { 0.0f };
-    float currentTransitionShift { 0.0f };
 
     // Unconditionally stable Direct Form II Biquad Bandpass Filter (5.5 Hz)
     float bq_b0 { 0.0f };

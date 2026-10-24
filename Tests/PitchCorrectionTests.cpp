@@ -50,34 +50,6 @@ bool testCorrectionSmootherModes()
     return passedHard && passedNatural;
 }
 
-bool testNoteTransitionDecoupling()
-{
-    toytune::CorrectionSmoother smoother;
-    smoother.prepare(44100.0);
-
-    // Initial state: holding note C4 (MIDI 60) with 0 cents error
-    smoother.processBlock(0.0f, 60.0f, 95.0f, 80.0f, 100.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                          toytune::TuningModeType::Modern, 128);
-
-    // Note jumps to D4 (MIDI 62) with +50 cents deviation
-    // With Note Transition = 80%, the first hop should NOT snap by +50 cents immediately
-    // but should glide smoothly and gracefully (ratio near 1.00)
-    const float glideRatio = smoother.processBlock(50.0f, 62.0f, 95.0f, 80.0f, 100.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                                                   toytune::TuningModeType::Modern, 128);
-
-    // With Instant Transition = 0%, the first hop should snap immediately to 50 cents
-    smoother.reset();
-    smoother.processBlock(0.0f, 60.0f, 95.0f, 0.0f, 100.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                          toytune::TuningModeType::Modern, 128);
-    const float instantRatio = smoother.processBlock(50.0f, 62.0f, 95.0f, 0.0f, 100.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-                                                     toytune::TuningModeType::Modern, 128);
-
-    const bool passed = (glideRatio < instantRatio && glideRatio < 1.01f && instantRatio > 1.015f);
-    std::cout << "  [NoteTransition] Slew Glide Ratio: " << glideRatio
-              << " vs Instant Snap: " << instantRatio << " -> " << (passed ? "PASS" : "FAIL") << "\n";
-    return passed;
-}
-
 bool testStereoPhasePreservation()
 {
     toytune::PitchShifter shifter;
@@ -116,7 +88,6 @@ bool runPitchCorrectionTests()
     bool allPassed = true;
     allPassed &= testPitchShifterLatency();
     allPassed &= testCorrectionSmootherModes();
-    allPassed &= testNoteTransitionDecoupling();
     allPassed &= testStereoPhasePreservation();
     return allPassed;
 }

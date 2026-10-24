@@ -71,7 +71,6 @@ public:
                  float inputGainDb,
                  float outputGainDb,
                  float retuneSpeedMs,
-                 float noteTransitionPct,
                  float strengthPct,
                  float toleranceCents,
                  float humanizePct,
@@ -135,12 +134,10 @@ public:
         telemetry.isVoiced.store(detectResult.isVoiced, std::memory_order_relaxed);
 
         float centsDev = 0.0f;
-        float targetMidiNote = 0.0f;
         if (detectResult.isVoiced && detectResult.pitchHz > 20.0f)
         {
             const auto target = targetSelector.resolveTarget(scaleEngine, detectResult.midiNote);
             centsDev = target.centsDeviation;
-            targetMidiNote = target.targetMidiNote;
 
             telemetry.targetMidiNote.store(target.targetMidiNote, std::memory_order_relaxed);
             telemetry.targetPitchHz.store(target.targetFreqHz, std::memory_order_relaxed);
@@ -166,9 +163,7 @@ public:
             if (detectResult.isVoiced && detectResult.pitchHz > 20.0f)
             {
                 pitchRatio = smoother.processBlock(centsDev,
-                                                   targetMidiNote,
                                                    retuneSpeedMs,
-                                                   noteTransitionPct,
                                                    strengthPct,
                                                    toleranceCents,
                                                    humanizePct,
@@ -179,7 +174,7 @@ public:
             }
             else
             {
-                smoother.onUnvoiced();
+                smoother.reset();
                 pitchRatio = 1.0f;
             }
 

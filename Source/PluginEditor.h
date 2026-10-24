@@ -48,9 +48,7 @@ private:
     std::unique_ptr<SegmentedPillComponent> tuningModeSelector;
 
     // 3. Middle Section
-    juce::Rectangle<int> leftTuningCardBounds;
     RotarySliderWithLabel retuneSpeedKnob;
-    RotarySliderWithLabel noteTransitionKnob;
     CentralPitchDisplayComponent centralPitchDisplay;
     RotarySliderWithLabel humanizeKnob;
 

@@ -13,7 +13,6 @@ namespace ParameterIDs
     inline constexpr const char* scaleType         = "scale_type";
     inline constexpr const char* referencePitch    = "reference_pitch";
     inline constexpr const char* retuneSpeed       = "retune_speed";
-    inline constexpr const char* noteTransition    = "note_transition";
     inline constexpr const char* correctionStrength= "correction_strength";
     inline constexpr const char* pitchTolerance    = "pitch_tolerance";
     inline constexpr const char* humanize          = "humanize";
