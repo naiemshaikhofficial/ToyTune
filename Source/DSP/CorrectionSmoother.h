@@ -46,11 +46,28 @@ public:
         if (!std::isfinite(rawDeviationCents))
             rawDeviationCents = 0.0f;
 
-        // 1. Mode overrides / biasing
-        float effectiveRetuneSpeed = retuneSpeedMs;
+        // 0. If Retune Speed is 0, completely bypass pitch shift (clean original dry voice)
+        if (retuneSpeedMs <= 0.001f)
+        {
+            stage1Cents = 0.0f;
+            smoothedPitchShiftCents = 0.0f;
+            return 1.0f;
+        }
+
+        const float speedNorm = juce::jlimit(0.0f, 100.0f, retuneSpeedMs) / 100.0f;
+
+        // Inverted response curve:
+        // 100 on knob -> 0.0 ms (instant hard tune snap / maximum auto-tune)
+        // 90 on knob  -> ~2.8 ms (very fast pop autotune)
+        // 75 on knob  -> ~17.5 ms (modern pop vocal tune)
+        // 50 on knob  -> ~70 ms (natural melodious vocal)
+        // 20 on knob  -> ~180 ms (subtle gentle correction)
+        const float inv = 1.0f - speedNorm;
+        float effectiveRetuneSpeed = inv * inv * 280.0f;
         float effectiveHumanize = humanizePct;
         float effectiveFlexTune = flexTunePct;
 
+        // 1. Mode overrides / biasing
         switch (mode)
         {
             case TuningModeType::HardTune:
@@ -62,15 +79,14 @@ public:
             case TuningModeType::Natural: // Classic Mode (Auto-Tune 5 architecture)
                 // Flex-Tune was not in Auto-Tune 5, so it is strictly disabled in Classic mode
                 effectiveFlexTune = 0.0f;
-                // Retune speed & humanize remain uninhibited for iconic snap response
                 break;
             case TuningModeType::Modern:
             default:
                 break;
         }
 
-        // 2. Deadband / Pitch Tolerance
-        float targetShiftCents = rawDeviationCents;
+        // 2. Deadband / Pitch Tolerance & Intensity Scaling
+        float targetShiftCents = rawDeviationCents * std::min(1.0f, speedNorm * 1.05f);
         if (std::abs(targetShiftCents) <= toleranceCents)
         {
             targetShiftCents = 0.0f;

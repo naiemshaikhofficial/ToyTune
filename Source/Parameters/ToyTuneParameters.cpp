@@ -88,9 +88,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout ToyTuneParameters::createPar
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { ParameterIDs::retuneSpeed, 1 },
         "Retune Speed",
-        juce::NormalisableRange<float>(0.0f, 400.0f, 0.1f, 0.5f), // Skewed toward fast tuning
-        20.0f,
-        juce::AudioParameterFloatAttributes().withLabel("ms")));
+        juce::NormalisableRange<float>(0.0f, 100.0f, 1.0f),
+        0.0f,
+        juce::AudioParameterFloatAttributes().withLabel("%")));
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID { ParameterIDs::correctionStrength, 1 },
@@ -125,7 +125,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ToyTuneParameters::createPar
         juce::ParameterID { ParameterIDs::vibratoPreserve, 1 },
         "Vibrato Preserve",
         juce::NormalisableRange<float>(0.0f, 100.0f, 0.5f),
-        50.0f,
+        0.0f,
         juce::AudioParameterFloatAttributes().withLabel("%")));
 
     // 5. Modes

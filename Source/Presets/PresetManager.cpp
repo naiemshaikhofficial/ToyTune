@@ -14,31 +14,31 @@ void PresetManager::initFactoryPresets()
 {
     factoryPresets.clear();
 
-    // 1. Natural Vocal
+    // 0. Default (Clean State matching Auto-Tune Default)
     factoryPresets.push_back({
-        "Natural Vocal",
-        50.0f,  // retuneSpeed
-        80.0f,  // strength
-        15.0f,  // tolerance
-        35.0f,  // humanize
-        40.0f,  // flexTune
-        75.0f,  // vibratoPreserve
-        0,      // Natural mode
+        "Default",
+        0.0f,   // retuneSpeed = 0 (No auto-tune applied)
+        100.0f, // strength
+        0.0f,   // tolerance = 0
+        0.0f,   // humanize = 0
+        0.0f,   // flexTune = 0
+        0.0f,   // vibratoPreserve = 0
+        1,      // Modern mode
         0,      // C
         0,      // Chromatic
         true,   // formantPreserve
-        0.0f    // formantShift
+        0.0f    // formantShift = 0
     });
 
-    // 2. Modern Pop (Default)
+    // 1. Modern Pop
     factoryPresets.push_back({
         "Modern Pop",
-        15.0f,  // retuneSpeed
+        85.0f,  // retuneSpeed (Fast, modern)
         100.0f, // strength
         5.0f,   // tolerance
         10.0f,  // humanize
         15.0f,  // flexTune
-        40.0f,  // vibratoPreserve
+        0.0f,   // vibratoPreserve
         1,      // Modern mode
         0,      // C
         1,      // Major
@@ -46,15 +46,15 @@ void PresetManager::initFactoryPresets()
         0.0f
     });
 
-    // 3. Fast Pop Tune
+    // 2. Fast Pop Tune
     factoryPresets.push_back({
         "Fast Pop Tune",
-        5.0f,   // retuneSpeed
+        95.0f,  // retuneSpeed (Very fast snap)
         100.0f, // strength
         0.0f,   // tolerance
         0.0f,   // humanize
         5.0f,   // flexTune
-        20.0f,  // vibratoPreserve
+        0.0f,   // vibratoPreserve
         1,      // Modern mode
         0,      // C
         1,      // Major
@@ -62,26 +62,26 @@ void PresetManager::initFactoryPresets()
         0.0f
     });
 
-    // 4. Hard Tune (T-Pain / Travis Scott style)
+    // 3. Hard Tune (T-Pain / Travis Scott style)
     factoryPresets.push_back({
         "Hard Tune",
-        0.0f,   // retuneSpeed (Instant)
+        100.0f, // retuneSpeed (Instant maximum hard snap)
         100.0f, // strength
         0.0f,   // tolerance
         0.0f,   // humanize
         0.0f,   // flexTune
         0.0f,   // vibratoPreserve
-        2,      // HardTune mode
+        0,      // Classic mode
         0,      // C
         2,      // Minor
         true,
         0.0f
     });
 
-    // 5. Robot Vocal
+    // 4. Robot Vocal
     factoryPresets.push_back({
         "Robot Vocal",
-        0.0f,
+        100.0f, // retuneSpeed (100% hard snap)
         100.0f,
         0.0f,
         0.0f,
@@ -94,16 +94,32 @@ void PresetManager::initFactoryPresets()
         0.0f
     });
 
+    // 5. Natural Vocal
+    factoryPresets.push_back({
+        "Natural Vocal",
+        50.0f,  // retuneSpeed (Smooth, melodious)
+        80.0f,  // strength
+        15.0f,  // tolerance
+        35.0f,  // humanize
+        40.0f,  // flexTune
+        0.0f,   // vibratoPreserve
+        1,      // Modern mode
+        0,      // C
+        0,      // Chromatic
+        true,   // formantPreserve
+        0.0f    // formantShift
+    });
+
     // 6. Subtle Correction
     factoryPresets.push_back({
         "Subtle Correction",
-        90.0f,
+        25.0f,  // retuneSpeed (Gentle, subtle)
         60.0f,
         25.0f,
         60.0f,
         50.0f,
-        90.0f,
-        0,      // Natural mode
+        0.0f,
+        1,      // Modern mode
         0,
         0,      // Chromatic
         true,

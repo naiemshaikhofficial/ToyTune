@@ -10,12 +10,12 @@ namespace toytune
 struct Preset
 {
     juce::String name;
-    float retuneSpeed { 20.0f };
+    float retuneSpeed { 0.0f };
     float strength { 100.0f };
     float tolerance { 0.0f };
     float humanize { 0.0f };
     float flexTune { 0.0f };
-    float vibratoPreserve { 50.0f };
+    float vibratoPreserve { 0.0f };
     int tuningMode { 1 }; // Modern
     int rootNote { 0 }; // C
     int scaleType { 0 }; // Chromatic
@@ -42,7 +42,7 @@ public:
 private:
     juce::AudioProcessorValueTreeState& state;
     std::vector<Preset> factoryPresets;
-    int currentPresetIndex { 1 }; // Modern Pop default
+    int currentPresetIndex { 0 }; // Default preset
 
     void initFactoryPresets();
     void setParameterValue(const char* paramId, float value);
