@@ -102,6 +102,16 @@ ToyTuneAudioProcessorEditor::ToyTuneAudioProcessorEditor(ToyTuneAudioProcessor& 
     outputGainKnob.attachToParameter(audioProcessor.getAPVTS(), ParameterIDs::outputGain);
     addAndMakeVisible(outputGainKnob);
 
+    // Dynamic UI states based on Tuning Mode (Modern vs Classic)
+    if (tuningModeSelector != nullptr)
+    {
+        tuningModeSelector->onSelectionChanged = [this](int /*segIndex*/)
+        {
+            updateTuningModeUI();
+        };
+    }
+    updateTuningModeUI();
+
     // Expanded Widescreen Plugin Dimensions (ProVerb-inspired spacious, non-congested dashboard)
     setSize(1360, 860);
     setResizable(true, true);
@@ -115,6 +125,26 @@ ToyTuneAudioProcessorEditor::~ToyTuneAudioProcessorEditor()
 {
     stopTimer();
     setLookAndFeel(nullptr);
+}
+
+void ToyTuneAudioProcessorEditor::updateTuningModeUI()
+{
+    if (auto* param = audioProcessor.getAPVTS().getRawParameterValue(ParameterIDs::tuningMode))
+    {
+        const int modeVal = static_cast<int>(std::round(param->load()));
+        // In ToyTune / Auto-Tune:
+        // modeVal == 0 is Classic (Natural)
+        // modeVal == 1 is Modern
+        // In Classic mode, Flex Tune and Formant Shift are disabled (Auto-Tune 5 architecture)
+        const bool isClassic = (modeVal == 0);
+        const bool shouldEnable = !isClassic;
+
+        if (flexTuneKnob.isEnabled() != shouldEnable)
+        {
+            flexTuneKnob.setEnabled(shouldEnable);
+            formantKnob.setEnabled(shouldEnable);
+        }
+    }
 }
 
 void ToyTuneAudioProcessorEditor::timerCallback()
@@ -140,6 +170,8 @@ void ToyTuneAudioProcessorEditor::timerCallback()
 
     if (tuningModeSelector != nullptr)
         tuningModeSelector->updateFromParameter();
+
+    updateTuningModeUI();
 }
 
 void ToyTuneAudioProcessorEditor::paint(juce::Graphics& g)

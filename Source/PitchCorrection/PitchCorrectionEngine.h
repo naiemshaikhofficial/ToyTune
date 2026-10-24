@@ -189,8 +189,12 @@ public:
             sampleOffset += hop;
         }
 
-        // 6. Formant Filter
-        formantFilter.updateParameters(currentRatio, formantShiftSt, formantPreserve);
+        // 6. Formant Filter (Bypassed in Classic mode to replicate pure Auto-Tune 5 processing)
+        const bool isClassicMode = (tuningMode == TuningModeType::Natural);
+        const float effectiveFormantShift = isClassicMode ? 0.0f : formantShiftSt;
+        const bool effectiveFormantPreserve = isClassicMode ? false : formantPreserve;
+
+        formantFilter.updateParameters(currentRatio, effectiveFormantShift, effectiveFormantPreserve);
         formantFilter.process(buffer);
 
         // 7. Dry/Wet Mix with Phase-Aligned Delay Compensation

@@ -55,8 +55,24 @@ public:
         updateValueDisplay();
     }
 
+    void enablementChanged() override
+    {
+        const bool enabled = isEnabled();
+        slider.setEnabled(enabled);
+
+        nameLabel.setColour(juce::Label::textColourId,
+            enabled ? juce::Colour(0xffd5d8e2) : juce::Colour(0xff4c4f5a));
+
+        valueLabel.setColour(juce::Label::textColourId,
+            enabled ? juce::Colour(0xffffffff) : juce::Colour(0xff4c4f5a));
+
+        repaint();
+    }
+
     void paint(juce::Graphics& g) override
     {
+        const bool enabled = isEnabled();
+
         // Draw card background if this is a large card (Retune Speed / Humanize)
         if (isLarge)
         {
@@ -69,10 +85,20 @@ public:
 
         // Draw value pill background below knob
         const auto pillBounds = valueLabel.getBounds().toFloat().reduced(2.0f, 1.0f);
-        g.setColour(juce::Colour(0xff16171b));
-        g.fillRoundedRectangle(pillBounds, pillBounds.getHeight() * 0.5f);
-        g.setColour(juce::Colour(0xff272932));
-        g.drawRoundedRectangle(pillBounds, pillBounds.getHeight() * 0.5f, 1.0f);
+        if (enabled)
+        {
+            g.setColour(juce::Colour(0xff16171b));
+            g.fillRoundedRectangle(pillBounds, pillBounds.getHeight() * 0.5f);
+            g.setColour(juce::Colour(0xff272932));
+            g.drawRoundedRectangle(pillBounds, pillBounds.getHeight() * 0.5f, 1.0f);
+        }
+        else
+        {
+            g.setColour(juce::Colour(0xff0e0f12));
+            g.fillRoundedRectangle(pillBounds, pillBounds.getHeight() * 0.5f);
+            g.setColour(juce::Colour(0xff1a1b20));
+            g.drawRoundedRectangle(pillBounds, pillBounds.getHeight() * 0.5f, 1.0f);
+        }
     }
 
     void resized() override

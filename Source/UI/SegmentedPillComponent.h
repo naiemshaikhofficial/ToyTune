@@ -52,6 +52,8 @@ public:
         }
     }
 
+    std::function<void(int)> onSelectionChanged;
+
     void selectSegment(int index, bool notify)
     {
         if (index >= 0 && index < labels.size())
@@ -64,6 +66,8 @@ public:
                     p->setValueNotifyingHost(p->convertTo0to1(static_cast<float>(values[static_cast<size_t>(index)])));
                 }
             }
+            if (onSelectionChanged != nullptr)
+                onSelectionChanged(selectedSegment);
             repaint();
         }
     }
@@ -80,6 +84,8 @@ public:
                     if (selectedSegment != static_cast<int>(i))
                     {
                         selectedSegment = static_cast<int>(i);
+                        if (onSelectionChanged != nullptr)
+                            onSelectionChanged(selectedSegment);
                         repaint();
                     }
                     break;

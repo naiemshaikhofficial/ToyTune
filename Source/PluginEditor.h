@@ -26,6 +26,7 @@ public:
 
 private:
     void timerCallback() override;
+    void updateTuningModeUI();
 
     ToyTuneAudioProcessor& audioProcessor;
     ToyTuneLookAndFeel customLookAndFeel;

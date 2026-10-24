@@ -49,20 +49,20 @@ public:
         // 1. Mode overrides / biasing
         float effectiveRetuneSpeed = retuneSpeedMs;
         float effectiveHumanize = humanizePct;
+        float effectiveFlexTune = flexTunePct;
 
         switch (mode)
         {
             case TuningModeType::HardTune:
-                effectiveRetuneSpeed = 0.0f;
-                effectiveHumanize = 0.0f;
-                break;
             case TuningModeType::Robot:
                 effectiveRetuneSpeed = 0.0f;
                 effectiveHumanize = 0.0f;
+                effectiveFlexTune = 0.0f;
                 break;
-            case TuningModeType::Natural:
-                effectiveRetuneSpeed = std::max(25.0f, retuneSpeedMs);
-                effectiveHumanize = std::max(20.0f, humanizePct);
+            case TuningModeType::Natural: // Classic Mode (Auto-Tune 5 architecture)
+                // Flex-Tune was not in Auto-Tune 5, so it is strictly disabled in Classic mode
+                effectiveFlexTune = 0.0f;
+                // Retune speed & humanize remain uninhibited for iconic snap response
                 break;
             case TuningModeType::Modern:
             default:
@@ -95,13 +95,13 @@ public:
             }
         }
 
-        // 4. Flex Tune (resists rapid transient pulls unless settled)
-        if (flexTunePct > 0.0f)
+        // 4. Flex Tune (resists rapid transient pulls unless settled - bypassed in Classic mode)
+        if (effectiveFlexTune > 0.0f)
         {
             const float diffFromPrev = std::abs(targetShiftCents - previousTargetCents);
             if (diffFromPrev > 60.0f) // Large pitch leap
             {
-                const float flexDamping = 1.0f - (flexTunePct / 100.0f) * 0.7f;
+                const float flexDamping = 1.0f - (effectiveFlexTune / 100.0f) * 0.7f;
                 targetShiftCents *= flexDamping;
             }
         }
