@@ -48,6 +48,8 @@ public:
         monoSumBuffer.clear();
         dryDelayLineL.reset();
         dryDelayLineR.reset();
+        unvoicedDecaySamples = 1024;
+        lastVoicedRatio = 1.0f;
     }
 
     void processMidi(const juce::MidiBuffer& midiMessages)
@@ -162,20 +164,33 @@ public:
             float pitchRatio = 1.0f;
             if (detectResult.isVoiced && detectResult.pitchHz > 20.0f)
             {
-                pitchRatio = smoother.processBlock(centsDev,
-                                                   retuneSpeedMs,
-                                                   strengthPct,
-                                                   toleranceCents,
-                                                   humanizePct,
-                                                   flexTunePct,
-                                                   vibratoPreservePct,
-                                                   tuningMode,
-                                                   hop);
+                unvoicedDecaySamples = 0;
+                lastVoicedRatio = smoother.processBlock(centsDev,
+                                                       retuneSpeedMs,
+                                                       strengthPct,
+                                                       toleranceCents,
+                                                       humanizePct,
+                                                       flexTunePct,
+                                                       vibratoPreservePct,
+                                                       tuningMode,
+                                                       hop);
+                pitchRatio = lastVoicedRatio;
             }
             else
             {
-                smoother.reset();
-                pitchRatio = 1.0f;
+                // Smooth consonant / unvoiced transition (decay over ~10-15 ms)
+                // Prevents abrupt pitch snaps or clicking on fricative attacks ('s', 't', 'k')
+                if (unvoicedDecaySamples < 512)
+                {
+                    unvoicedDecaySamples += hop;
+                    const float decay = 1.0f - juce::jlimit(0.0f, 1.0f, static_cast<float>(unvoicedDecaySamples) / 512.0f);
+                    pitchRatio = 1.0f + (lastVoicedRatio - 1.0f) * decay;
+                }
+                else
+                {
+                    pitchRatio = 1.0f;
+                    smoother.reset();
+                }
             }
 
             currentRatio = pitchRatio;
@@ -251,6 +266,9 @@ private:
 
     juce::AudioBuffer<float> dryBuffer;
     juce::AudioBuffer<float> monoSumBuffer;
+
+    int unvoicedDecaySamples { 1024 };
+    float lastVoicedRatio { 1.0f };
 };
 
 } // namespace toytune
