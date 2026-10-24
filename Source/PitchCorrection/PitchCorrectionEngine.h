@@ -174,6 +174,7 @@ public:
             }
             else
             {
+                smoother.reset();
                 pitchRatio = 1.0f;
             }
 

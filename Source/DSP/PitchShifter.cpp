@@ -119,10 +119,17 @@ void PitchShifter::process(juce::AudioBuffer<float>& buffer)
         if (rightData != nullptr)
             rightBuffer[writePos] = rightData[i];
 
-        // 2. Advance primary read position by the pitch ratio
+        // 2. Advance read positions by the pitch ratio
         primaryReadPos += static_cast<double>(smoothedRatio);
         while (primaryReadPos >= static_cast<double>(kBufferSize))
             primaryReadPos -= static_cast<double>(kBufferSize);
+
+        if (isCrossfading)
+        {
+            secondaryReadPos += static_cast<double>(smoothedRatio);
+            while (secondaryReadPos >= static_cast<double>(kBufferSize))
+                secondaryReadPos -= static_cast<double>(kBufferSize);
+        }
 
         // Calculate current delay of primary pointer behind write pointer
         double currentDelay = static_cast<double>(writePos) - primaryReadPos;
@@ -238,10 +245,6 @@ void PitchShifter::process(juce::AudioBuffer<float>& buffer)
         else
         {
             // Brief in-phase splice crossfade
-            secondaryReadPos += static_cast<double>(smoothedRatio);
-            while (secondaryReadPos >= static_cast<double>(kBufferSize))
-                secondaryReadPos -= static_cast<double>(kBufferSize);
-
             xfadeProgress += xfadeStep;
 
             // Equal-power / Hann crossfade across identical pitch phase

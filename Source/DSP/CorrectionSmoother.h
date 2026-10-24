@@ -144,30 +144,34 @@ public:
         targetShiftCents *= (juce::jlimit(0.0f, 100.0f, strengthPct) / 100.0f);
 
         // 8. Critically Damped 2nd-Order S-Curve Retune Ballistics (Auto-Tune / Waves Tune standard)
-        if (effectiveRetuneSpeed <= 0.5f)
+        // Discretized via exact analytical 2-pole cascaded filter (unconditionally stable for all tau >= 0)
+        targetShiftCents = juce::jlimit(-400.0f, 400.0f, targetShiftCents);
+
+        if (effectiveRetuneSpeed <= 0.1f)
         {
             // Instant snap: zero delay, zero lag (Hard Tune / Travis Scott effect)
+            stage1Cents = targetShiftCents;
             smoothedPitchShiftCents = targetShiftCents;
-            pitchVelocity = 0.0f;
         }
         else
         {
-            const float tau = std::max(0.001f, effectiveRetuneSpeed * 0.001f);
-            const float omega = 4.5f / tau;
-            const float error = targetShiftCents - smoothedPitchShiftCents;
-            const float accel = (omega * omega * error) - (2.0f * omega * pitchVelocity);
+            // Two identical cascaded 1st-order stages provide critically damped (Q = 0.5)
+            // S-curve step response with zero overshoot and 100% unconditional stability!
+            const float tau = effectiveRetuneSpeed * 0.001f;
+            const float tauStage = std::max(1e-4f, tau * 0.5f);
+            const float alpha = 1.0f - std::exp(-dtSeconds / tauStage);
 
-            pitchVelocity += accel * dtSeconds;
-            smoothedPitchShiftCents += pitchVelocity * dtSeconds;
+            stage1Cents += alpha * (targetShiftCents - stage1Cents);
+            smoothedPitchShiftCents += alpha * (stage1Cents - smoothedPitchShiftCents);
 
-            if (!std::isfinite(smoothedPitchShiftCents) || !std::isfinite(pitchVelocity))
+            if (!std::isfinite(smoothedPitchShiftCents) || !std::isfinite(stage1Cents))
             {
+                stage1Cents = targetShiftCents;
                 smoothedPitchShiftCents = targetShiftCents;
-                pitchVelocity = 0.0f;
             }
         }
 
-        smoothedPitchShiftCents = juce::jlimit(-2400.0f, 2400.0f, smoothedPitchShiftCents);
+        smoothedPitchShiftCents = juce::jlimit(-400.0f, 400.0f, smoothedPitchShiftCents);
 
         // 9. Convert cents to pitch transposition ratio: ratio = 2^(cents / 1200)
         float pitchRatio = std::pow(2.0f, smoothedPitchShiftCents / 1200.0f);
@@ -181,8 +185,8 @@ public:
 
     void reset()
     {
+        stage1Cents = 0.0f;
         smoothedPitchShiftCents = 0.0f;
-        pitchVelocity = 0.0f;
         previousTargetCents = 0.0f;
         lastRawDeviation = 0.0f;
         heldNoteDurationMs = 0.0f;
@@ -193,7 +197,7 @@ public:
 private:
     double sampleRate { 44100.0 };
     float smoothedPitchShiftCents { 0.0f };
-    float pitchVelocity { 0.0f };
+    float stage1Cents { 0.0f };
     float previousTargetCents { 0.0f };
     float lastRawDeviation { 0.0f };
     float heldNoteDurationMs { 0.0f };
