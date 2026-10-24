@@ -172,7 +172,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ToyTuneParameters::createPar
         juce::ParameterID { ParameterIDs::advActiveTab, 1 },
         "Advanced Active Tab",
         tabNames,
-        0));
+        1));
 
     // 3. Correction Section
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
