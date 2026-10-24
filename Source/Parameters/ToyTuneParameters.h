@@ -31,6 +31,32 @@ namespace ParameterIDs
     {
         return "note_mask_" + juce::String(noteIndex);
     }
+
+    // 12 semitones note bypass: note_byp_0 (C) to note_byp_11 (B)
+    inline juce::String noteBypass(int noteIndex)
+    {
+        return "note_byp_" + juce::String(noteIndex);
+    }
+
+    // 12 semitones cents detune: note_cents_0 (C) to note_cents_11 (B)
+    inline juce::String noteCents(int noteIndex)
+    {
+        return "note_cents_" + juce::String(noteIndex);
+    }
+
+    // Advanced Vibrato (Create Vibrato LFO)
+    inline constexpr const char* advVibShape       = "adv_vib_shape";
+    inline constexpr const char* advVibRate        = "adv_vib_rate";
+    inline constexpr const char* advVibDelay       = "adv_vib_delay";
+    inline constexpr const char* advVibOnset       = "adv_vib_onset";
+    inline constexpr const char* advVibVariation   = "adv_vib_variation";
+    inline constexpr const char* advVibPitch       = "adv_vib_pitch";
+    inline constexpr const char* advVibAmp         = "adv_vib_amp";
+    inline constexpr const char* advVibFormant     = "adv_vib_formant";
+
+    // Advanced Drawer UI State
+    inline constexpr const char* advDrawerOpen     = "adv_drawer_open";
+    inline constexpr const char* advActiveTab      = "adv_active_tab";
 }
 
 enum class VocalRangeType

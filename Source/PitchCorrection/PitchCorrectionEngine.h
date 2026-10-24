@@ -8,6 +8,7 @@
 #include "../DSP/FormantFilter.h"
 #include "../DSP/CircularBuffer.h"
 #include "../DSP/AudioTelemetry.h"
+#include "../DSP/VibratoGenerator.h"
 #include <juce_dsp/juce_dsp.h>
 
 namespace toytune
@@ -23,6 +24,7 @@ public:
         detector.prepare(sampleRate, maxBlockSize);
         shifter.prepare(sampleRate, maxBlockSize);
         smoother.prepare(sampleRate);
+        vibratoGen.prepare(sampleRate);
 
         juce::dsp::ProcessSpec spec;
         spec.sampleRate = sampleRate;
@@ -43,6 +45,7 @@ public:
         shifter.reset();
         smoother.reset();
         targetSelector.reset();
+        vibratoGen.reset();
         formantFilter.reset();
         dryBuffer.clear();
         monoSumBuffer.clear();
@@ -84,7 +87,15 @@ public:
                  bool formantPreserve,
                  float formantShiftSt,
                  float dryWetMixPct,
-                 bool isBypassed)
+                 bool isBypassed,
+                 VibratoShape advVibShape = VibratoShape::Off,
+                 float advVibRateHz = 5.5f,
+                 float advVibDelayMs = 400.0f,
+                 float advVibOnsetMs = 400.0f,
+                 float advVibVariationPct = 15.0f,
+                 float advVibPitchCents = 0.0f,
+                 float advVibAmpPct = 0.0f,
+                 float advVibFormantPct = 0.0f)
     {
         const int numChannels = buffer.getNumChannels();
         const int numSamples = buffer.getNumSamples();
@@ -156,6 +167,7 @@ public:
         constexpr int kMaxHop = 128;
         int sampleOffset = 0;
         float currentRatio = 1.0f;
+        float lastFormantModRatio = 1.0f;
 
         while (sampleOffset < numSamples)
         {
@@ -193,6 +205,22 @@ public:
                 }
             }
 
+            // Advanced Synthesized Vibrato LFO Modulation (Auto-Tune Pro Architecture)
+            const auto vibMod = vibratoGen.processBlock(advVibShape,
+                                                        advVibRateHz,
+                                                        advVibDelayMs,
+                                                        advVibOnsetMs,
+                                                        advVibVariationPct,
+                                                        advVibPitchCents,
+                                                        advVibAmpPct,
+                                                        advVibFormantPct,
+                                                        detectResult.isVoiced && detectResult.pitchHz > 20.0f,
+                                                        hop);
+
+            if (std::abs(vibMod.pitchModCents) > 1e-3f)
+                pitchRatio *= std::pow(2.0f, vibMod.pitchModCents / 1200.0f);
+
+            lastFormantModRatio = vibMod.formantModRatio;
             currentRatio = pitchRatio;
             telemetry.currentRetuneRatio.store(pitchRatio, std::memory_order_relaxed);
 
@@ -201,12 +229,19 @@ public:
             shifter.setPitchRatioAndPitch(pitchRatio, detectResult.pitchHz, detectResult.isVoiced);
             shifter.process(subBuffer);
 
+            // Apply amplitude modulation (vocal tremolo) if active
+            if (std::abs(vibMod.ampModGain - 1.0f) > 1e-4f)
+                subBuffer.applyGain(vibMod.ampModGain);
+
             sampleOffset += hop;
         }
 
         // 6. Formant Filter (Bypassed in Classic mode to replicate pure Auto-Tune 5 processing)
         const bool isClassicMode = (tuningMode == TuningModeType::Natural);
-        const float effectiveFormantShift = isClassicMode ? 0.0f : formantShiftSt;
+        const float vibFormantShift = (std::abs(lastFormantModRatio - 1.0f) > 1e-4f)
+                                      ? (std::log2(lastFormantModRatio) * 12.0f)
+                                      : 0.0f;
+        const float effectiveFormantShift = (isClassicMode ? 0.0f : formantShiftSt) + vibFormantShift;
         const bool effectiveFormantPreserve = isClassicMode ? false : formantPreserve;
 
         formantFilter.updateParameters(currentRatio, effectiveFormantShift, effectiveFormantPreserve);
@@ -260,6 +295,7 @@ private:
     CorrectionSmoother smoother;
     TargetNoteSelector targetSelector;
     FormantFilter formantFilter;
+    VibratoGenerator vibratoGen;
 
     CircularBuffer dryDelayLineL;
     CircularBuffer dryDelayLineR;

@@ -11,6 +11,7 @@ ToyTuneAudioProcessorEditor::ToyTuneAudioProcessorEditor(ToyTuneAudioProcessor& 
       retuneSpeedKnob("Retune Speed", "", false, true),
       centralPitchDisplay(audioProcessor.getTelemetry()),
       humanizeKnob("Humanize", "", false, true),
+      advancedDrawer(audioProcessor.getAPVTS(), audioProcessor.getScaleEngine()),
       keyboardSelector(audioProcessor.getAPVTS()),
       flexTuneKnob("Flex Tune", "", false, false),
       vibratoKnob("Vibrato", "", false, false),
@@ -80,7 +81,19 @@ ToyTuneAudioProcessorEditor::ToyTuneAudioProcessorEditor(ToyTuneAudioProcessor& 
     humanizeKnob.attachToParameter(audioProcessor.getAPVTS(), ParameterIDs::humanize);
     addAndMakeVisible(humanizeKnob);
 
-    // 4. Chromatic Keyboard
+    // 4. Advanced Drawer Component & Chromatic Keyboard
+    advancedDrawer.onDrawerToggled = [this](bool isOpen)
+    {
+        if (isOpen && getHeight() < 940)
+            setSize(getWidth(), 940);
+        else if (!isOpen && getHeight() == 940)
+            setSize(getWidth(), 860);
+        else
+            resized();
+        repaint();
+    };
+    addAndMakeVisible(advancedDrawer);
+
     addAndMakeVisible(keyboardSelector);
 
     // 5. Bottom Section
@@ -266,21 +279,27 @@ void ToyTuneAudioProcessorEditor::resized()
     // 5. Bottom Control Section (Compute bottom first so middle can fill cleanly)
     const int shelfX = sideMargin;
     const int shelfW = W - 2 * sideMargin;
-    const int shelfH = juce::jlimit(190, 250, static_cast<int>(H * 0.285f));
-    const int bottomMargin = juce::jlimit(12, 22, static_cast<int>(H * 0.022f));
+    const int shelfH = juce::jlimit(175, 235, static_cast<int>(H * 0.26f));
+    const int bottomMargin = juce::jlimit(10, 18, static_cast<int>(H * 0.018f));
     const int shelfY = H - shelfH - bottomMargin;
     bottomShelfBounds = juce::Rectangle<int>(shelfX, shelfY, shelfW, shelfH);
 
     // 4. Chromatic Keyboard Bar (Above bottom shelf)
-    const int kbH = juce::jlimit(36, 46, static_cast<int>(H * 0.052f));
-    const int kbGap = juce::jlimit(10, 18, static_cast<int>(H * 0.018f));
+    const int kbH = juce::jlimit(34, 42, static_cast<int>(H * 0.046f));
+    const int kbGap = juce::jlimit(6, 12, static_cast<int>(H * 0.012f));
     const int kbY = shelfY - kbH - kbGap;
     const int kbMargin = sideMargin + juce::jlimit(14, 32, static_cast<int>(W * 0.022f));
     keyboardSelector.setBounds(kbMargin, kbY, W - 2 * kbMargin, kbH);
 
-    // 3. Middle Section (Between Upper row and Keyboard Bar)
-    const int midY = upperY + upperH + juce::jlimit(10, 20, static_cast<int>(H * 0.018f));
-    const int midH = std::max(180, kbY - kbGap - midY);
+    // Advanced Drawer Component (Positioned immediately above keyboard)
+    const int drawerH = advancedDrawer.getDesiredHeight();
+    const int drawerGap = juce::jlimit(6, 10, static_cast<int>(H * 0.01f));
+    const int drawerY = kbY - drawerH - drawerGap;
+    advancedDrawer.setBounds(kbMargin, drawerY, W - 2 * kbMargin, drawerH);
+
+    // 3. Middle Section (Between Upper row and Advanced Drawer)
+    const int midY = upperY + upperH + juce::jlimit(8, 16, static_cast<int>(H * 0.015f));
+    const int midH = std::max(140, drawerY - drawerGap - midY);
     const int cardW = juce::jlimit(142, 200, static_cast<int>(W * 0.142f));
 
     // Left Card: Retune Speed

@@ -106,11 +106,17 @@ void ToyTuneAudioProcessor::updateScaleEngineFromParameters()
     scaleEngine.setScaleType(scaleIdx);
     scaleEngine.setReferencePitch(refHz);
 
-    // Update 12 custom note masks
+    // Update 12 custom note masks, bypass states, and cents detune
     for (int i = 0; i < 12; ++i)
     {
         const bool active = apvts.getRawParameterValue(ParameterIDs::noteMask(i))->load() > 0.5f;
         scaleEngine.setCustomNoteActive(i, active);
+
+        if (auto* bypParam = apvts.getRawParameterValue(ParameterIDs::noteBypass(i)))
+            scaleEngine.setBypassSemitone(i, bypParam->load() > 0.5f);
+
+        if (auto* centsParam = apvts.getRawParameterValue(ParameterIDs::noteCents(i)))
+            scaleEngine.setCentsDetune(i, centsParam->load());
     }
 }
 
@@ -145,6 +151,25 @@ void ToyTuneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     const float mix = apvts.getRawParameterValue(ParameterIDs::dryWetMix)->load();
     const bool bypassed = apvts.getRawParameterValue(ParameterIDs::bypass)->load() > 0.5f;
 
+    // Advanced Vibrato parameters
+    auto* vibShapeVal = apvts.getRawParameterValue(ParameterIDs::advVibShape);
+    auto* vibRateVal = apvts.getRawParameterValue(ParameterIDs::advVibRate);
+    auto* vibDelayVal = apvts.getRawParameterValue(ParameterIDs::advVibDelay);
+    auto* vibOnsetVal = apvts.getRawParameterValue(ParameterIDs::advVibOnset);
+    auto* vibVarVal = apvts.getRawParameterValue(ParameterIDs::advVibVariation);
+    auto* vibPitchVal = apvts.getRawParameterValue(ParameterIDs::advVibPitch);
+    auto* vibAmpVal = apvts.getRawParameterValue(ParameterIDs::advVibAmp);
+    auto* vibFormantVal = apvts.getRawParameterValue(ParameterIDs::advVibFormant);
+
+    const auto advVibShape = (vibShapeVal != nullptr) ? static_cast<VibratoShape>(static_cast<int>(vibShapeVal->load())) : VibratoShape::Off;
+    const float advVibRate = (vibRateVal != nullptr) ? vibRateVal->load() : 5.5f;
+    const float advVibDelay = (vibDelayVal != nullptr) ? vibDelayVal->load() : 400.0f;
+    const float advVibOnset = (vibOnsetVal != nullptr) ? vibOnsetVal->load() : 400.0f;
+    const float advVibVar = (vibVarVal != nullptr) ? vibVarVal->load() : 15.0f;
+    const float advVibPitch = (vibPitchVal != nullptr) ? vibPitchVal->load() : 0.0f;
+    const float advVibAmp = (vibAmpVal != nullptr) ? vibAmpVal->load() : 0.0f;
+    const float advVibFormant = (vibFormantVal != nullptr) ? vibFormantVal->load() : 0.0f;
+
     engine.setLowLatencyMode(lowLatency);
     const int currentLatency = engine.getLatencySamples();
     if (getLatencySamples() != currentLatency)
@@ -167,7 +192,15 @@ void ToyTuneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
                    formantPreserve,
                    formantShift,
                    mix,
-                   bypassed);
+                   bypassed,
+                   advVibShape,
+                   advVibRate,
+                   advVibDelay,
+                   advVibOnset,
+                   advVibVar,
+                   advVibPitch,
+                   advVibAmp,
+                   advVibFormant);
 }
 
 bool ToyTuneAudioProcessor::hasEditor() const

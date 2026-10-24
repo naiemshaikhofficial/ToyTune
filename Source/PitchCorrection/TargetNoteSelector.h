@@ -56,7 +56,7 @@ public:
         // Hysteresis Note Latching (Waves Tune Real-Time Anti-Chatter):
         // If we already have an active target note in scale and the vocal pitch is within +/- 58 cents,
         // stay locked to it to prevent rapid ping-pong jitter on borderline microtones.
-        if (hasValidTarget && scaleEngine.isSemitoneActive(lastTargetNote.targetSemitone))
+        if (hasValidTarget && !lastTargetNote.isBypassed && scaleEngine.isSemitoneActive(lastTargetNote.targetSemitone))
         {
             const float deviationFromCurrent = (lastTargetNote.targetMidiNote - inputMidiNote) * 100.0f;
             if (std::abs(deviationFromCurrent) < 58.0f)
@@ -69,7 +69,7 @@ public:
 
         const auto newTarget = scaleEngine.calculateTarget(inputMidiNote);
         lastTargetNote = newTarget;
-        hasValidTarget = true;
+        hasValidTarget = !newTarget.isBypassed;
         return newTarget;
     }
 

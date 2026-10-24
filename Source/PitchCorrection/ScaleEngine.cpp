@@ -8,6 +8,8 @@ ScaleEngine::ScaleEngine()
 {
     customMask.fill(true);
     currentScaleMask.fill(true);
+    bypassMask.fill(false);
+    centsDetune.fill(0.0f);
     updateScaleMask();
 }
 
@@ -46,6 +48,52 @@ void ScaleEngine::setReferencePitch(float refHz)
         referenceA4 = refHz;
 }
 
+void ScaleEngine::setBypassSemitone(int semitoneIndex, bool isBypassed)
+{
+    if (semitoneIndex >= 0 && semitoneIndex < 12)
+        bypassMask[semitoneIndex] = isBypassed;
+}
+
+bool ScaleEngine::isSemitoneBypassed(int semitoneIndex) const noexcept
+{
+    const int idx = (semitoneIndex % 12 + 12) % 12;
+    return bypassMask[idx];
+}
+
+void ScaleEngine::setCentsDetune(int semitoneIndex, float centsOffset)
+{
+    if (semitoneIndex >= 0 && semitoneIndex < 12)
+        centsDetune[semitoneIndex] = juce::jlimit(-50.0f, 50.0f, centsOffset);
+}
+
+float ScaleEngine::getCentsDetune(int semitoneIndex) const noexcept
+{
+    const int idx = (semitoneIndex % 12 + 12) % 12;
+    return centsDetune[idx];
+}
+
+void ScaleEngine::applyQuickSet(int setIndex)
+{
+    // 0 = Major, 1 = Minor, 2 = All Chromatic
+    scaleType = 8; // Custom mask mode
+    customMask.fill(false);
+
+    std::vector<int> intervals;
+    if (setIndex == 0) // Major
+        intervals = { 0, 2, 4, 5, 7, 9, 11 };
+    else if (setIndex == 1) // Minor
+        intervals = { 0, 2, 3, 5, 7, 8, 10 };
+    else // All Chromatic
+        intervals = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 };
+
+    for (int interval : intervals)
+    {
+        const int pitchClass = (rootNote + interval) % 12;
+        customMask[pitchClass] = true;
+    }
+    updateScaleMask();
+}
+
 bool ScaleEngine::isSemitoneActive(int semitone) const noexcept
 {
     const int idx = (semitone % 12 + 12) % 12;
@@ -55,6 +103,16 @@ bool ScaleEngine::isSemitoneActive(int semitone) const noexcept
 std::array<bool, 12> ScaleEngine::getActiveMask() const
 {
     return currentScaleMask;
+}
+
+std::array<bool, 12> ScaleEngine::getBypassMask() const
+{
+    return bypassMask;
+}
+
+std::array<float, 12> ScaleEngine::getCentsDetuneArray() const
+{
+    return centsDetune;
 }
 
 void ScaleEngine::updateScaleMask()
@@ -162,13 +220,32 @@ TargetPitchResult ScaleEngine::calculateTarget(float inputMidiNote) const
         }
     }
 
-    result.targetMidiNote = closestMidi;
-    result.targetFreqHz = midiToFrequency(closestMidi, referenceA4);
-    result.centsDeviation = (closestMidi - inputMidiNote) * 100.0f;
+    // Check if the sung note's pitch class is marked as BYPASS in the scale engine
+    const int sungPitchClass = (roundedInput % 12 + 12) % 12;
+    if (bypassMask[sungPitchClass] && std::abs(static_cast<float>(roundedInput) - inputMidiNote) < 0.65f)
+    {
+        result.targetMidiNote = inputMidiNote;
+        result.targetFreqHz = midiToFrequency(inputMidiNote, referenceA4);
+        result.centsDeviation = 0.0f;
+        result.targetSemitone = sungPitchClass;
+        result.targetOctave = (roundedInput / 12) - 1;
+        result.isBypassed = true;
+        result.noteName = getNoteNameWithOctave(roundedInput);
+        return result;
+    }
 
+    // Apply microtonal cents detune to target scale note if configured
     const int targetInt = static_cast<int>(std::round(closestMidi));
-    result.targetSemitone = (targetInt % 12 + 12) % 12;
+    const int targetPitchClass = (targetInt % 12 + 12) % 12;
+    const float detuneOffset = centsDetune[targetPitchClass] / 100.0f;
+    const float finalTargetMidi = closestMidi + detuneOffset;
+
+    result.targetMidiNote = finalTargetMidi;
+    result.targetFreqHz = midiToFrequency(finalTargetMidi, referenceA4);
+    result.centsDeviation = (finalTargetMidi - inputMidiNote) * 100.0f;
+    result.targetSemitone = targetPitchClass;
     result.targetOctave = (targetInt / 12) - 1;
+    result.isBypassed = false;
     result.noteName = getNoteNameWithOctave(targetInt);
 
     return result;

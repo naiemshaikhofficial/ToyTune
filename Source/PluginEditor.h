@@ -10,6 +10,7 @@
 #include "UI/RotarySliderWithLabel.h"
 #include "UI/SegmentedPillComponent.h"
 #include "UI/PitchCorrectionRangeSlider.h"
+#include "UI/AdvancedDrawerComponent.h"
 
 namespace toytune
 {
@@ -52,7 +53,8 @@ private:
     CentralPitchDisplayComponent centralPitchDisplay;
     RotarySliderWithLabel humanizeKnob;
 
-    // 4. Chromatic Keyboard Bar
+    // 4. Advanced Drawer & Chromatic Keyboard Bar
+    AdvancedDrawerComponent advancedDrawer;
     KeyboardScaleSelector keyboardSelector;
 
     // 5. Bottom Control Section
