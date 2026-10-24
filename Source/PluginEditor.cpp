@@ -102,8 +102,10 @@ ToyTuneAudioProcessorEditor::ToyTuneAudioProcessorEditor(ToyTuneAudioProcessor& 
     outputGainKnob.attachToParameter(audioProcessor.getAPVTS(), ParameterIDs::outputGain);
     addAndMakeVisible(outputGainKnob);
 
-    // Fixed aspect window matching reference: 1000 x 660
-    setSize(1000, 660);
+    // Expanded Widescreen Plugin Dimensions (ProVerb-inspired spacious, non-congested dashboard)
+    setSize(1360, 860);
+    setResizable(true, true);
+    setResizeLimits(1000, 640, 2200, 1400);
 
     // 60 FPS ultra-smooth audio telemetry and pitch needle updates
     startTimerHz(60);
@@ -155,24 +157,26 @@ void ToyTuneAudioProcessorEditor::paint(juce::Graphics& g)
     g.drawRoundedRectangle(bounds, 12.0f, 1.5f);
 
     // 2. Angled Ventilation Grip Ridges on Left and Right Chassis Margins
-    // Upper Grip Lines (Next to Retune Speed and Humanize cards)
     g.setColour(juce::Colour(0x30ffffff));
-    const float gripStartX_L = bounds.getX() + 20.0f;
-    const float gripStartX_R = bounds.getRight() - 20.0f;
+    const float gripStartX_L = bounds.getX() + juce::jlimit(16.0f, 26.0f, bounds.getWidth() * 0.018f);
+    const float gripStartX_R = bounds.getRight() - juce::jlimit(16.0f, 26.0f, bounds.getWidth() * 0.018f);
 
+    // Upper Grip Lines (Centered vertically beside Retune Speed and Humanize cards)
+    const float upperCenterY = static_cast<float>(retuneSpeedKnob.getY() + retuneSpeedKnob.getHeight() / 2);
     for (int i = 0; i < 5; ++i)
     {
-        const float y = 220.0f + static_cast<float>(i) * 12.0f;
+        const float y = upperCenterY - 24.0f + static_cast<float>(i) * 12.0f;
         // Left angled vents
         g.drawLine(gripStartX_L - 8.0f, y + 10.0f, gripStartX_L + 2.0f, y - 2.0f, 2.2f);
         // Right angled vents
         g.drawLine(gripStartX_R - 2.0f, y + 10.0f, gripStartX_R + 8.0f, y - 2.0f, 2.2f);
     }
 
-    // Lower Grip Lines (Next to Bottom Shelf)
+    // Lower Grip Lines (Centered vertically beside Bottom Shelf)
+    const float lowerCenterY = static_cast<float>(bottomShelfBounds.getCentreY());
     for (int i = 0; i < 4; ++i)
     {
-        const float y = 525.0f + static_cast<float>(i) * 12.0f;
+        const float y = lowerCenterY - 18.0f + static_cast<float>(i) * 12.0f;
         g.drawLine(gripStartX_L - 8.0f, y + 10.0f, gripStartX_L + 2.0f, y - 2.0f, 2.2f);
         g.drawLine(gripStartX_R - 2.0f, y + 10.0f, gripStartX_R + 8.0f, y - 2.0f, 2.2f);
     }
@@ -188,77 +192,102 @@ void ToyTuneAudioProcessorEditor::paint(juce::Graphics& g)
 void ToyTuneAudioProcessorEditor::resized()
 {
     const auto bounds = getLocalBounds();
+    const int W = bounds.getWidth();
+    const int H = bounds.getHeight();
 
     // 1. Top Header Bar
-    headerBar.setBounds(0, 0, bounds.getWidth(), 56);
+    const int headerH = juce::jlimit(58, 76, static_cast<int>(H * 0.082f));
+    headerBar.setBounds(0, 0, W, headerH);
 
-    // 2. Upper Selectors Row (y=66 to 110)
-    const int upperY = 66;
+    // Dynamic horizontal margin for spacious chassis feel
+    const int sideMargin = juce::jlimit(36, 68, static_cast<int>(W * 0.045f));
+
+    // 2. Upper Selectors Row
+    const int upperY = headerH + juce::jlimit(10, 20, static_cast<int>(H * 0.018f));
+    const int selectorH = juce::jlimit(30, 36, static_cast<int>(H * 0.042f));
+    const int labelH = 16;
+    const int upperH = labelH + 4 + selectorH;
 
     // Left: Input Type
-    inputTypeLabel.setBounds(44, upperY, 180, 16);
+    const int inputTypeW = juce::jlimit(190, 230, static_cast<int>(W * 0.165f));
+    inputTypeLabel.setBounds(sideMargin, upperY, inputTypeW, labelH);
     if (inputTypeSelector != nullptr)
-        inputTypeSelector->setBounds(44, upperY + 18, 190, 30);
+        inputTypeSelector->setBounds(sideMargin, upperY + labelH + 4, inputTypeW, selectorH);
 
     // Center: Key & Scale
-    const int centerKeyScaleW = 168;
-    const int centerKeyScaleX = bounds.getCentreX() - (centerKeyScaleW / 2);
-    keyScaleLabel.setBounds(centerKeyScaleX, upperY, centerKeyScaleW, 16);
-    rootKeyBox.setBounds(centerKeyScaleX, upperY + 18, 64, 30);
-    scaleTypeBox.setBounds(centerKeyScaleX + 70, upperY + 18, 98, 30);
+    const int rootW = juce::jlimit(64, 80, static_cast<int>(W * 0.058f));
+    const int scaleW = juce::jlimit(98, 124, static_cast<int>(W * 0.09f));
+    const int comboGap = 8;
+    const int keyScaleW = rootW + comboGap + scaleW;
+    const int keyScaleX = bounds.getCentreX() - (keyScaleW / 2);
+    keyScaleLabel.setBounds(keyScaleX, upperY, keyScaleW, labelH);
+    rootKeyBox.setBounds(keyScaleX, upperY + labelH + 4, rootW, selectorH);
+    scaleTypeBox.setBounds(keyScaleX + rootW + comboGap, upperY + labelH + 4, scaleW, selectorH);
 
     // Right: Tuning Mode
-    const int modeW = 180;
-    const int modeX = bounds.getRight() - 44 - modeW;
-    tuningModeLabel.setBounds(modeX, upperY, modeW, 16);
+    const int modeW = juce::jlimit(180, 220, static_cast<int>(W * 0.16f));
+    const int modeX = bounds.getRight() - sideMargin - modeW;
+    tuningModeLabel.setBounds(modeX, upperY, modeW, labelH);
     if (tuningModeSelector != nullptr)
-        tuningModeSelector->setBounds(modeX, upperY + 18, modeW, 30);
+        tuningModeSelector->setBounds(modeX, upperY + labelH + 4, modeW, selectorH);
 
-    // 3. Middle Section (y=128 to 366)
-    const int midY = 128;
-    const int cardW = 142;
-    const int cardH = 228;
-
-    // Left Card: Retune Speed
-    retuneSpeedKnob.setBounds(44, midY, cardW, cardH);
-
-    // Center: Circular Pitch Display
-    const int displayX = 44 + cardW + 12;
-    const int displayW = modeX - displayX - 12;
-    centralPitchDisplay.setBounds(displayX, midY, displayW, cardH);
-
-    // Right Card: Humanize
-    humanizeKnob.setBounds(modeX + modeW - cardW, midY, cardW, cardH);
-
-    // 4. Chromatic Keyboard Bar (y=376 to 414)
-    keyboardSelector.setBounds(68, 376, bounds.getWidth() - 136, 36);
-
-    // 5. Bottom Control Section (y=432 to 628)
-    const int shelfX = 44;
-    const int shelfW = bounds.getWidth() - 88;
-    const int shelfY = 432;
-    const int shelfH = 196;
+    // 5. Bottom Control Section (Compute bottom first so middle can fill cleanly)
+    const int shelfX = sideMargin;
+    const int shelfW = W - 2 * sideMargin;
+    const int shelfH = juce::jlimit(190, 250, static_cast<int>(H * 0.285f));
+    const int bottomMargin = juce::jlimit(12, 22, static_cast<int>(H * 0.022f));
+    const int shelfY = H - shelfH - bottomMargin;
     bottomShelfBounds = juce::Rectangle<int>(shelfX, shelfY, shelfW, shelfH);
 
-    // Sub-group: Left 3 Knobs (Flex Tune, Vibrato, Formant)
-    const int knobW = 82;
-    const int knobH = 150;
-    const int knobY = shelfY + 22;
+    // 4. Chromatic Keyboard Bar (Above bottom shelf)
+    const int kbH = juce::jlimit(36, 46, static_cast<int>(H * 0.052f));
+    const int kbGap = juce::jlimit(10, 18, static_cast<int>(H * 0.018f));
+    const int kbY = shelfY - kbH - kbGap;
+    const int kbMargin = sideMargin + juce::jlimit(14, 32, static_cast<int>(W * 0.022f));
+    keyboardSelector.setBounds(kbMargin, kbY, W - 2 * kbMargin, kbH);
 
-    flexTuneKnob.setBounds(shelfX + 22, knobY, knobW, knobH);
-    vibratoKnob.setBounds(shelfX + 22 + knobW + 10, knobY, knobW, knobH);
-    formantKnob.setBounds(shelfX + 22 + (knobW + 10) * 2, knobY, knobW, knobH);
+    // 3. Middle Section (Between Upper row and Keyboard Bar)
+    const int midY = upperY + upperH + juce::jlimit(10, 20, static_cast<int>(H * 0.018f));
+    const int midH = std::max(180, kbY - kbGap - midY);
+    const int cardW = juce::jlimit(142, 200, static_cast<int>(W * 0.142f));
 
-    // Sub-group: Center Pitch Correction Range Slider
-    const int rangeX = shelfX + 22 + (knobW + 10) * 3 + 18;
-    const int rightKnobsTotalW = (knobW + 12) * 2;
-    const int rangeW = (shelfX + shelfW - rightKnobsTotalW - 22) - rangeX - 18;
-    rangeSlider.setBounds(rangeX, shelfY + 34, rangeW, 110);
+    // Left Card: Retune Speed
+    retuneSpeedKnob.setBounds(sideMargin, midY, cardW, midH);
 
-    // Sub-group: Right 2 Knobs (Mix, Output)
-    const int mixX = shelfX + shelfW - rightKnobsTotalW - 14;
+    // Right Card: Humanize
+    humanizeKnob.setBounds(modeX + modeW - cardW, midY, cardW, midH);
+
+    // Center: Circular Pitch Display
+    const int displayPad = juce::jlimit(10, 18, static_cast<int>(W * 0.012f));
+    const int displayX = sideMargin + cardW + displayPad;
+    const int displayW = (modeX + modeW - cardW) - displayPad - displayX;
+    centralPitchDisplay.setBounds(displayX, midY, displayW, midH);
+
+    // Layout inside Bottom Shelf
+    const int shelfInnerPad = juce::jlimit(14, 26, static_cast<int>(shelfW * 0.02f));
+    const int knobW = juce::jlimit(82, 112, static_cast<int>(shelfW * 0.086f));
+    const int knobH = shelfH - juce::jlimit(28, 46, static_cast<int>(shelfH * 0.18f));
+    const int knobY = shelfY + (shelfH - knobH) / 2 + 5;
+    const int knobGap = juce::jlimit(8, 14, static_cast<int>(shelfW * 0.009f));
+
+    // Left 3 Knobs (Flex Tune, Vibrato, Formant)
+    flexTuneKnob.setBounds(shelfX + shelfInnerPad, knobY, knobW, knobH);
+    vibratoKnob.setBounds(shelfX + shelfInnerPad + knobW + knobGap, knobY, knobW, knobH);
+    formantKnob.setBounds(shelfX + shelfInnerPad + (knobW + knobGap) * 2, knobY, knobW, knobH);
+
+    // Right 2 Knobs (Mix, Output)
+    const int rightKnobsTotalW = knobW * 2 + knobGap;
+    const int mixX = shelfX + shelfW - shelfInnerPad - rightKnobsTotalW;
     mixKnob.setBounds(mixX, knobY, knobW, knobH);
-    outputGainKnob.setBounds(mixX + knobW + 12, knobY, knobW, knobH);
+    outputGainKnob.setBounds(mixX + knobW + knobGap, knobY, knobW, knobH);
+
+    // Center Range Slider
+    const int rangePad = juce::jlimit(16, 28, static_cast<int>(shelfW * 0.02f));
+    const int rangeX = shelfX + shelfInnerPad + (knobW + knobGap) * 3 + rangePad;
+    const int rangeW = mixX - rangePad - rangeX;
+    const int rangeH = juce::jlimit(105, 140, static_cast<int>(shelfH * 0.58f));
+    const int rangeY = shelfY + (shelfH - rangeH) / 2;
+    rangeSlider.setBounds(rangeX, rangeY, rangeW, rangeH);
 }
 
 } // namespace toytune

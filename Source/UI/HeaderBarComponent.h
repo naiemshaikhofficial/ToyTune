@@ -129,39 +129,68 @@ public:
     {
         const auto bounds = getLocalBounds().toFloat();
 
-        // 1. Left Branding: PRODUCER TOY Logo + Divider + ToyTune Title
-        float curX = bounds.getX() + 18.0f;
-        const float logoSize = 38.0f;
-        const float logoY = bounds.getY() + (bounds.getHeight() - logoSize) * 0.5f;
+        juce::Graphics::ScopedSaveState state(g);
+        g.setImageResamplingQuality(juce::Graphics::highResamplingQuality);
+
+        // 1. Left Branding: PRODUCER TOY Logo + Divider + ToyTune 3D Logo + Subtitle
+        float curX = bounds.getX() + 24.0f;
+        const float logoMaxH = juce::jlimit(34.0f, 48.0f, bounds.getHeight() * 0.68f);
 
         if (logoImage.isValid())
         {
-            g.drawImage(logoImage, static_cast<int>(curX), static_cast<int>(logoY),
-                        static_cast<int>(logoSize), static_cast<int>(logoSize),
-                        0, 0, logoImage.getWidth(), logoImage.getHeight());
-            curX += logoSize + 12.0f;
+            const float ptAspect = static_cast<float>(logoImage.getWidth()) / static_cast<float>(std::max(1, logoImage.getHeight()));
+            const float ptW = logoMaxH * ptAspect;
+            const float ptY = bounds.getY() + (bounds.getHeight() - logoMaxH) * 0.5f;
+            g.drawImageWithin(logoImage, static_cast<int>(curX), static_cast<int>(ptY),
+                              static_cast<int>(ptW), static_cast<int>(logoMaxH),
+                              juce::RectanglePlacement(juce::RectanglePlacement::xLeft | juce::RectanglePlacement::yMid | juce::RectanglePlacement::onlyReduceInSize));
+            curX += ptW + 16.0f;
         }
 
         // Vertical metallic hairline divider
         g.setColour(juce::Colour(0x35ffffff));
-        g.drawVerticalLine(static_cast<int>(curX), bounds.getY() + 12.0f, bounds.getBottom() - 12.0f);
-        curX += 14.0f;
+        g.drawVerticalLine(static_cast<int>(curX), bounds.getY() + 14.0f, bounds.getBottom() - 14.0f);
+        curX += 16.0f;
 
-        // "ToyTune" Title and "REAL-TIME VOCAL TUNE"
-        const float textY = bounds.getY() + 10.0f;
-        g.setFont(juce::Font(juce::FontOptions(22.0f).withStyle("Bold")));
-        g.setColour(juce::Colour(0xffffffff));
-        g.drawText("Toy", static_cast<int>(curX), static_cast<int>(textY), 40, 24, juce::Justification::centredLeft, false);
+        // ToyTune 3D Wordmark Logo
+        if (wordmarkImage.isValid())
+        {
+            const float ttAspect = static_cast<float>(wordmarkImage.getWidth()) / static_cast<float>(std::max(1, wordmarkImage.getHeight()));
+            const float ttH = logoMaxH * 0.78f;
+            const float ttW = ttH * ttAspect;
+            const float ttY = bounds.getY() + (bounds.getHeight() - (ttH + 13.0f)) * 0.5f;
 
-        juce::ColourGradient tuneGrad(juce::Colour(0xffffffff), curX + 38.0f, textY,
-                                      juce::Colour(0xffb5b8c5), curX + 38.0f, textY + 24.0f, false);
-        g.setGradientFill(tuneGrad);
-        g.drawText("Tune", static_cast<int>(curX + 38.0f), static_cast<int>(textY), 65, 24, juce::Justification::centredLeft, false);
+            g.drawImageWithin(wordmarkImage, static_cast<int>(curX), static_cast<int>(ttY),
+                              static_cast<int>(ttW), static_cast<int>(ttH),
+                              juce::RectanglePlacement(juce::RectanglePlacement::xLeft | juce::RectanglePlacement::yMid | juce::RectanglePlacement::onlyReduceInSize));
 
-        // Subtitle: REAL-TIME VOCAL TUNE
-        g.setFont(juce::Font(juce::FontOptions(8.5f).withStyle("Bold")));
-        g.setColour(juce::Colour(0xff828590));
-        g.drawText("REAL-TIME  VOCAL  TUNE", static_cast<int>(curX + 1.0f), static_cast<int>(textY + 24.0f), 150, 12, juce::Justification::centredLeft, false);
+            // Subtitle: REAL-TIME VOCAL TUNE
+            g.setFont(juce::Font(juce::FontOptions(8.5f).withStyle("Bold")));
+            g.setColour(juce::Colour(0xff858895));
+            g.drawText("REAL-TIME  VOCAL  TUNE",
+                       static_cast<int>(curX + 2.0f),
+                       static_cast<int>(ttY + ttH + 1.0f),
+                       static_cast<int>(ttW + 30.0f),
+                       12,
+                       juce::Justification::centredLeft, false);
+        }
+        else
+        {
+            // Typographic fallback if image missing
+            const float textY = bounds.getY() + (bounds.getHeight() - 36.0f) * 0.5f;
+            g.setFont(juce::Font(juce::FontOptions(22.0f).withStyle("Bold")));
+            g.setColour(juce::Colour(0xffffffff));
+            g.drawText("Toy", static_cast<int>(curX), static_cast<int>(textY), 40, 24, juce::Justification::centredLeft, false);
+
+            juce::ColourGradient tuneGrad(juce::Colour(0xffffffff), curX + 38.0f, textY,
+                                          juce::Colour(0xffb5b8c5), curX + 38.0f, textY + 24.0f, false);
+            g.setGradientFill(tuneGrad);
+            g.drawText("Tune", static_cast<int>(curX + 38.0f), static_cast<int>(textY), 65, 24, juce::Justification::centredLeft, false);
+
+            g.setFont(juce::Font(juce::FontOptions(8.5f).withStyle("Bold")));
+            g.setColour(juce::Colour(0xff828590));
+            g.drawText("REAL-TIME  VOCAL  TUNE", static_cast<int>(curX + 1.0f), static_cast<int>(textY + 24.0f), 150, 12, juce::Justification::centredLeft, false);
+        }
 
         // 2. Center Preset Bar Container
         const auto presetBarRect = presetBarBounds.toFloat();
@@ -171,37 +200,39 @@ public:
         g.drawRoundedRectangle(presetBarRect, 8.0f, 1.2f);
 
         // Preset Name & Subtitle in Center
-        auto textArea = presetBarRect.reduced(36.0f, 3.0f);
-        const auto topArea = textArea.removeFromTop(16.0f);
-        g.setFont(juce::Font(juce::FontOptions(12.5f).withStyle("Bold")));
+        auto textArea = presetBarRect.reduced(38.0f, 3.0f);
+        const auto topArea = textArea.removeFromTop(18.0f);
+        g.setFont(juce::Font(juce::FontOptions(13.0f).withStyle("Bold")));
         g.setColour(juce::Colour(0xffffffff));
         g.drawText(currentPresetName, topArea.toNearestInt(), juce::Justification::centred, false);
 
-        g.setFont(juce::Font(juce::FontOptions(9.0f)));
+        g.setFont(juce::Font(juce::FontOptions(9.5f)));
         g.setColour(juce::Colour(0xff757885));
         g.drawText(isFactoryPreset ? "Factory Preset" : "User Preset", textArea.toNearestInt(), juce::Justification::centred, false);
 
-        // 3. Right: Producer Toy Headphone Mascot & Angled Grip Lines
-        const float rightX = bounds.getRight() - 18.0f;
+        // 3. Right: Borderless Producer Toy Headphone Mascot & Angled Grip Lines
+        const float rightMargin = 22.0f;
+        const float rightX = bounds.getRight() - rightMargin;
 
         // 3 Angled grip lines on far right
         g.setColour(juce::Colour(0x35ffffff));
         for (int i = 0; i < 3; ++i)
         {
-            const float lineX = rightX - static_cast<float>(i) * 5.0f;
-            g.drawLine(lineX - 8.0f, bounds.getY() + 38.0f, lineX, bounds.getY() + 24.0f, 1.6f);
+            const float lineX = rightX - static_cast<float>(i) * 6.0f;
+            g.drawLine(lineX - 9.0f, bounds.getY() + bounds.getHeight() * 0.62f,
+                       lineX, bounds.getY() + bounds.getHeight() * 0.38f, 1.8f);
         }
 
-        // Mascot Bear Head with Headphones
+        // Borderless Mascot Bear Head with Headphones
         if (mascotImage.isValid())
         {
-            const float mascotSize = 42.0f;
-            const float mascotX = rightX - 32.0f - mascotSize;
+            const float mascotSize = juce::jlimit(42.0f, 56.0f, bounds.getHeight() * 0.78f);
+            const float mascotX = rightX - 36.0f - mascotSize;
             const float mascotY = bounds.getY() + (bounds.getHeight() - mascotSize) * 0.5f;
 
-            g.drawImage(mascotImage, static_cast<int>(mascotX), static_cast<int>(mascotY),
-                        static_cast<int>(mascotSize), static_cast<int>(mascotSize),
-                        0, 0, mascotImage.getWidth(), mascotImage.getHeight());
+            g.drawImageWithin(mascotImage, static_cast<int>(mascotX), static_cast<int>(mascotY),
+                              static_cast<int>(mascotSize), static_cast<int>(mascotSize),
+                              juce::RectanglePlacement(juce::RectanglePlacement::centred | juce::RectanglePlacement::onlyReduceInSize));
         }
     }
 
@@ -217,26 +248,26 @@ public:
     {
         const auto bounds = getLocalBounds();
 
-        // Center Preset Bar (Width ~210px, Height ~34px)
-        const int barW = 210;
-        const int barH = 34;
-        const int barX = bounds.getCentreX() - (barW / 2) - 35;
+        // Preset bar: width 230-310px, height 34-40px, centered
+        const int barW = juce::jlimit(230, 310, static_cast<int>(bounds.getWidth() * 0.22f));
+        const int barH = juce::jlimit(34, 40, static_cast<int>(bounds.getHeight() * 0.58f));
+        const int barX = bounds.getCentreX() - (barW / 2) - 45;
         const int barY = bounds.getCentreY() - (barH / 2);
         presetBarBounds = juce::Rectangle<int>(barX, barY, barW, barH);
 
-        prevBtn.setBounds(barX + 4, barY + 4, 26, barH - 8);
-        nextBtn.setBounds(barX + barW - 30, barY + 4, 26, barH - 8);
+        prevBtn.setBounds(barX + 4, barY + 4, 28, barH - 8);
+        nextBtn.setBounds(barX + barW - 32, barY + 4, 28, barH - 8);
 
         // Action icon buttons next to preset bar
-        const int iconBtnSize = 28;
+        const int iconBtnSize = barH - 6;
         const int iconBtnY = bounds.getCentreY() - (iconBtnSize / 2);
-        int iconX = barX + barW + 10;
+        int iconX = barX + barW + 12;
 
         saveBtn.setBounds(iconX, iconBtnY, iconBtnSize, iconBtnSize);
-        iconX += iconBtnSize + 6;
+        iconX += iconBtnSize + 8;
 
         deleteBtn.setBounds(iconX, iconBtnY, iconBtnSize, iconBtnSize);
-        iconX += iconBtnSize + 6;
+        iconX += iconBtnSize + 8;
 
         settingsBtn.setBounds(iconX, iconBtnY, iconBtnSize, iconBtnSize);
     }
