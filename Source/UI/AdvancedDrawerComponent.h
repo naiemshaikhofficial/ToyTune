@@ -45,13 +45,6 @@ public:
         };
         addAndMakeVisible(vibratoTabBtn);
 
-        advancedToggleBtn.setButtonText("Advanced ︽");
-        advancedToggleBtn.onClick = [this]()
-        {
-            setDrawerOpen(!isOpen);
-        };
-        addAndMakeVisible(advancedToggleBtn);
-
         scaleTabBtn.setButtonText("Scale");
         scaleTabBtn.setClickingTogglesState(false);
         scaleTabBtn.onClick = [this]()
@@ -62,9 +55,16 @@ public:
         };
         addAndMakeVisible(scaleTabBtn);
 
+        advancedToggleBtn.setButtonText("Advanced " + juce::String::charToString(0x25B2));
+        advancedToggleBtn.onClick = [this]()
+        {
+            setDrawerOpen(!isOpen);
+        };
+        addAndMakeVisible(advancedToggleBtn);
+
         // 2. Vibrato Tab Components
         // Shape selector buttons: Off, Sine, Square, Saw
-        static const char* shapeNames[] = { "Off", "~", "[_]", "/|" };
+        static const char* shapeNames[] = { "Off", "Sine", "Square", "Saw" };
         for (int i = 0; i < 4; ++i)
         {
             shapeButtons[i] = std::make_unique<juce::TextButton>(shapeNames[i]);
@@ -237,8 +237,19 @@ public:
         if (auto* param = apvts.getRawParameterValue(ParameterIDs::advVibShape))
             currentShape = static_cast<int>(std::round(param->load()));
 
+        const juce::Colour activeBg(0xffffffff);
+        const juce::Colour inactiveBg(0xff16171b);
+        const juce::Colour activeText(0xff0a0a0d);
+        const juce::Colour inactiveText(0xff8a8d9a);
+
         for (int i = 0; i < 4; ++i)
-            shapeButtons[i]->setToggleState(i == currentShape, juce::dontSendNotification);
+        {
+            const bool isSelected = (i == currentShape);
+            shapeButtons[i]->setToggleState(isSelected, juce::dontSendNotification);
+            shapeButtons[i]->setColour(juce::TextButton::buttonColourId, isSelected ? activeBg : inactiveBg);
+            shapeButtons[i]->setColour(juce::TextButton::textColourOnId, isSelected ? activeText : inactiveText);
+            shapeButtons[i]->setColour(juce::TextButton::textColourOffId, isSelected ? activeText : inactiveText);
+        }
     }
 
     void paint(juce::Graphics& g) override
@@ -283,16 +294,23 @@ public:
             g.drawRoundedRectangle(createRect, 6.0f, 1.0f);
             g.drawRoundedRectangle(modRect, 6.0f, 1.0f);
 
-            // Group Titles
-            g.setFont(juce::Font(juce::FontOptions(10.5f).withStyle("Bold")));
+            // Group Titles (Clean top-left placement)
+            g.setFont(juce::Font(juce::FontOptions(11.0f).withStyle("Bold")));
             g.setColour(juce::Colour(0xff8a8d9a));
-            g.drawText("CREATE VIBRATO", createRect.withTrimmedTop(6.0f).withHeight(16.0f), juce::Justification::centred, false);
-            g.drawText("MODULATE", modRect.withTrimmedTop(6.0f).withHeight(16.0f), juce::Justification::centred, false);
+            g.drawText("CREATE VIBRATO", juce::Rectangle<float>(createRect.getX() + 14.0f, createRect.getY() + 7.0f, 160.0f, 20.0f), juce::Justification::centredLeft, false);
+            g.drawText("MODULATE", juce::Rectangle<float>(modRect.getX() + 14.0f, modRect.getY() + 7.0f, 140.0f, 20.0f), juce::Justification::centredLeft, false);
 
-            // Flow Arrow
-            g.setColour(juce::Colour(0xff555968));
-            g.setFont(juce::Font(juce::FontOptions(18.0f).withStyle("Bold")));
-            g.drawText("-->", arrowRect, juce::Justification::centred, false);
+            // Flow Routing Arrow (Crisp vector line with arrowhead)
+            juce::Path p;
+            const float cy = arrowRect.getCentreY();
+            const float cx = arrowRect.getCentreX();
+            p.startNewSubPath(cx - 10.0f, cy);
+            p.lineTo(cx + 8.0f, cy);
+            p.startNewSubPath(cx + 2.0f, cy - 5.0f);
+            p.lineTo(cx + 8.0f, cy);
+            p.lineTo(cx + 2.0f, cy + 5.0f);
+            g.setColour(juce::Colour(0xff454854));
+            g.strokePath(p, juce::PathStrokeType(1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         }
         else
         {
@@ -355,16 +373,17 @@ public:
         const int W = bounds.getWidth();
         const int headerH = 32;
 
-        // 1. Header Bar: Center [ Advanced ︽/︾ ] with [ Vibrato ] on left and [ Scale ] on right
-        const int toggleBtnW = 110;
-        const int tabBtnW = 80;
+        // 1. Header Bar: Center [ Vibrato ] [ Scale ] | [ Advanced ▲/▼ ]
+        const int tabBtnW = 82;
+        const int toggleBtnW = 108;
         const int btnH = 24;
         const int btnY = (headerH - btnH) / 2;
-        const int centerX = W / 2;
+        const int totalHeaderBtnsW = tabBtnW * 2 + 4 + 14 + toggleBtnW;
+        const int startHeaderX = (W - totalHeaderBtnsW) / 2;
 
-        advancedToggleBtn.setBounds(centerX - toggleBtnW / 2, btnY, toggleBtnW, btnH);
-        vibratoTabBtn.setBounds(centerX - toggleBtnW / 2 - tabBtnW - 8, btnY, tabBtnW, btnH);
-        scaleTabBtn.setBounds(centerX + toggleBtnW / 2 + 8, btnY, tabBtnW, btnH);
+        vibratoTabBtn.setBounds(startHeaderX, btnY, tabBtnW, btnH);
+        scaleTabBtn.setBounds(startHeaderX + tabBtnW + 4, btnY, tabBtnW, btnH);
+        advancedToggleBtn.setBounds(startHeaderX + tabBtnW * 2 + 18, btnY, toggleBtnW, btnH);
 
         updateVisibility();
 
@@ -386,13 +405,14 @@ public:
             auto modRect = contentArea.removeFromLeft(modW);
 
             // In Create Vibrato Card:
-            // Top: 4 Shape Buttons
-            const int shapeCardTop = createRect.getY() + 26;
-            const int shapeW = 42;
+            // Top Row (Y = createRect.getY() + 6, H = 22):
+            // Right-aligned 4 Shape Buttons (Off, Sine, Square, Saw)
+            const int shapeCardTop = createRect.getY() + 6;
+            const int shapeW = 46;
             const int shapeH = 22;
             const int shapeGap = 4;
             const int totalShapesW = 4 * shapeW + 3 * shapeGap;
-            int shapeStartX = createRect.getCentreX() - (totalShapesW / 2);
+            int shapeStartX = createRect.getRight() - 14 - totalShapesW;
 
             for (int i = 0; i < 4; ++i)
             {
@@ -400,9 +420,9 @@ public:
                 shapeStartX += shapeW + shapeGap;
             }
 
-            // Bottom: 4 Knobs (Rate, Delay, Onset, Variation)
-            const int knobY = shapeCardTop + shapeH + 6;
-            const int knobH = createRect.getBottom() - knobY - 4;
+            // Bottom Area: 4 Knobs (Rate, Delay, Onset, Variation)
+            const int knobY = createRect.getY() + 34;
+            const int knobH = std::max(60, createRect.getBottom() - knobY - 6);
             const int knobW = (createRect.getWidth() - 20) / 4;
             int knobX = createRect.getX() + 10;
 
@@ -415,8 +435,9 @@ public:
             varKnob.setBounds(knobX, knobY, knobW, knobH);
 
             // In Modulate Card: 3 Knobs (Pitch, Amp, Formant)
-            const int modKnobY = modRect.getY() + 26;
-            const int modKnobH = modRect.getBottom() - modKnobY - 4;
+            // Perfectly aligned vertically to the same knobY and knobH
+            const int modKnobY = modRect.getY() + 34;
+            const int modKnobH = std::max(60, modRect.getBottom() - modKnobY - 6);
             const int modKnobW = (modRect.getWidth() - 16) / 3;
             int modKnobX = modRect.getX() + 8;
 
@@ -518,7 +539,7 @@ private:
 
     void updateHeaderUI()
     {
-        advancedToggleBtn.setButtonText(isOpen ? "Advanced ︾" : "Advanced ︽");
+        advancedToggleBtn.setButtonText("Advanced " + juce::String::charToString(isOpen ? 0x25BC : 0x25B2));
         
         // Highlight active tab
         const juce::Colour activeBg(0xffffffff);
