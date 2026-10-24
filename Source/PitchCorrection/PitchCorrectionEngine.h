@@ -9,6 +9,7 @@
 #include "../DSP/CircularBuffer.h"
 #include "../DSP/AudioTelemetry.h"
 #include "../DSP/VibratoGenerator.h"
+#include "../DSP/HarmonyEngine.h"
 #include <juce_dsp/juce_dsp.h>
 
 namespace toytune
@@ -25,6 +26,7 @@ public:
         shifter.prepare(sampleRate, maxBlockSize);
         smoother.prepare(sampleRate);
         vibratoGen.prepare(sampleRate);
+        harmonyEngine.prepare(sampleRate, maxBlockSize);
 
         juce::dsp::ProcessSpec spec;
         spec.sampleRate = sampleRate;
@@ -46,6 +48,7 @@ public:
         smoother.reset();
         targetSelector.reset();
         vibratoGen.reset();
+        harmonyEngine.reset();
         formantFilter.reset();
         dryBuffer.clear();
         monoSumBuffer.clear();
@@ -95,7 +98,9 @@ public:
                  float advVibVariationPct = 15.0f,
                  float advVibPitchCents = 0.0f,
                  float advVibAmpPct = 0.0f,
-                 float advVibFormantPct = 0.0f)
+                 float advVibFormantPct = 0.0f,
+                 const std::array<HarmonyVoiceParams, 4>* harmonyVoices = nullptr,
+                 const HarmonyMasterParams* harmonyMaster = nullptr)
     {
         const int numChannels = buffer.getNumChannels();
         const int numSamples = buffer.getNumSamples();
@@ -279,6 +284,18 @@ public:
             }
         }
 
+        // 7.5 Process 4-Voice Real-Time Harmony Engine
+        if (harmonyMaster != nullptr && harmonyMaster->enabled && harmonyVoices != nullptr)
+        {
+            harmonyEngine.process(buffer,
+                                  scaleEngine,
+                                  detectResult.pitchHz,
+                                  detectResult.midiNote,
+                                  detectResult.isVoiced && detectResult.pitchHz > 20.0f,
+                                  *harmonyVoices,
+                                  *harmonyMaster);
+        }
+
         // 8. Output Gain
         const float outGainLinear = juce::Decibels::decibelsToGain(outputGainDb);
         buffer.applyGain(outGainLinear);
@@ -296,6 +313,7 @@ private:
     TargetNoteSelector targetSelector;
     FormantFilter formantFilter;
     VibratoGenerator vibratoGen;
+    HarmonyEngine harmonyEngine;
 
     CircularBuffer dryDelayLineL;
     CircularBuffer dryDelayLineR;

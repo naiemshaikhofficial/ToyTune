@@ -11,6 +11,7 @@
 #include "UI/SegmentedPillComponent.h"
 #include "UI/PitchCorrectionRangeSlider.h"
 #include "UI/AdvancedDrawerComponent.h"
+#include "UI/HarmonyPlayerComponent.h"
 
 namespace toytune
 {
@@ -28,6 +29,7 @@ public:
 private:
     void timerCallback() override;
     void updateTuningModeUI();
+    void updateMainViewMode();
 
     ToyTuneAudioProcessor& audioProcessor;
     ToyTuneLookAndFeel customLookAndFeel;
@@ -47,11 +49,14 @@ private:
 
     juce::Label tuningModeLabel;
     std::unique_ptr<SegmentedPillComponent> tuningModeSelector;
+    juce::TextButton harmonyModeToggleBtn;
 
     // 3. Middle Section
     RotarySliderWithLabel retuneSpeedKnob;
     CentralPitchDisplayComponent centralPitchDisplay;
+    HarmonyPlayerComponent harmonyPlayer;
     RotarySliderWithLabel humanizeKnob;
+    bool isHarmonyViewActive { false };
 
     // 4. Advanced Drawer & Chromatic Keyboard Bar
     AdvancedDrawerComponent advancedDrawer;

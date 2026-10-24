@@ -170,6 +170,51 @@ void ToyTuneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     const float advVibAmp = (vibAmpVal != nullptr) ? vibAmpVal->load() : 0.0f;
     const float advVibFormant = (vibFormantVal != nullptr) ? vibFormantVal->load() : 0.0f;
 
+    // Harmony Player parameters
+    std::array<HarmonyVoiceParams, 4> harmVoices;
+    HarmonyMasterParams harmMaster;
+
+    if (auto* harmEn = apvts.getRawParameterValue(ParameterIDs::harmonyEnable))
+        harmMaster.enabled = harmEn->load() > 0.5f;
+
+    if (auto* harmMode = apvts.getRawParameterValue(ParameterIDs::harmonyMode))
+        harmMaster.intervalMode = static_cast<HarmonyIntervalMode>(static_cast<int>(harmMode->load()));
+
+    if (auto* val = apvts.getRawParameterValue(ParameterIDs::harmNaturalize))
+        harmMaster.naturalizePct = val->load();
+    if (auto* val = apvts.getRawParameterValue(ParameterIDs::harmTransition))
+        harmMaster.transitionTimeMs = val->load();
+    if (auto* val = apvts.getRawParameterValue(ParameterIDs::harmPitchVar))
+        harmMaster.pitchVariationCents = val->load();
+    if (auto* val = apvts.getRawParameterValue(ParameterIDs::harmTimingVar))
+        harmMaster.timingVariationMs = val->load();
+    if (auto* val = apvts.getRawParameterValue(ParameterIDs::harmEnvAttack))
+        harmMaster.envAttackMs = val->load();
+    if (auto* val = apvts.getRawParameterValue(ParameterIDs::harmEnvRelease))
+        harmMaster.envReleaseMs = val->load();
+    if (auto* val = apvts.getRawParameterValue(ParameterIDs::harmEqFreq))
+        harmMaster.eqHighPassHz = val->load();
+    if (auto* val = apvts.getRawParameterValue(ParameterIDs::harmGateThresh))
+        harmMaster.gateThresholdDb = val->load();
+    if (auto* val = apvts.getRawParameterValue(ParameterIDs::harmStereoWidth))
+        harmMaster.stereoWidthPct = val->load();
+
+    for (int i = 0; i < 4; ++i)
+    {
+        if (auto* val = apvts.getRawParameterValue(ParameterIDs::harmVoiceEnable(i)))
+            harmVoices[i].enabled = val->load() > 0.5f;
+        if (auto* val = apvts.getRawParameterValue(ParameterIDs::harmVoiceInterval(i)))
+            harmVoices[i].interval = static_cast<HarmonyVoiceInterval>(static_cast<int>(val->load()));
+        if (auto* val = apvts.getRawParameterValue(ParameterIDs::harmVoiceFormant(i)))
+            harmVoices[i].formantShiftSt = val->load();
+        if (auto* val = apvts.getRawParameterValue(ParameterIDs::harmVoicePan(i)))
+            harmVoices[i].pan = val->load();
+        if (auto* val = apvts.getRawParameterValue(ParameterIDs::harmVoiceLevel(i)))
+            harmVoices[i].levelDb = val->load();
+        if (auto* val = apvts.getRawParameterValue(ParameterIDs::harmVoiceSolo(i)))
+            harmVoices[i].solo = val->load() > 0.5f;
+    }
+
     engine.setLowLatencyMode(lowLatency);
     const int currentLatency = engine.getLatencySamples();
     if (getLatencySamples() != currentLatency)
@@ -200,7 +245,9 @@ void ToyTuneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
                    advVibVar,
                    advVibPitch,
                    advVibAmp,
-                   advVibFormant);
+                   advVibFormant,
+                   &harmVoices,
+                   &harmMaster);
 }
 
 bool ToyTuneAudioProcessor::hasEditor() const

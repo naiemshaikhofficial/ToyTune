@@ -263,6 +263,132 @@ juce::AudioProcessorValueTreeState::ParameterLayout ToyTuneParameters::createPar
         "Bypass",
         false));
 
+    // 8. Harmony Player Section (Auto-Tune Pro 11 4-Voice Real-Time Harmonizer)
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID { ParameterIDs::harmonyEnable, 1 },
+        "Harmony Player Enable",
+        false));
+
+    static const juce::StringArray harmModes { "Scale Diatonic", "Fixed Semitones", "MIDI Notes" };
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID { ParameterIDs::harmonyMode, 1 },
+        "Harmony Mode",
+        harmModes,
+        0));
+
+    static const juce::StringArray harmIntervalNames {
+        "-12 (Oct Down)", "-10 (7th Down)", "-7 (5th Down)", "-5 (4th Down)", "-3/-4 (3rd Down)",
+        "0 (Unison)",
+        "+3/+4 (3rd Up)", "+5 (4th Up)", "+7 (5th Up)", "+10 (7th Up)", "+12 (Oct Up)"
+    };
+
+    const float defaultPans[4] = { -0.6f, 0.6f, -0.3f, 0.3f };
+    const int defaultIntervals[4] = { 6 /* +3rd */, 8 /* +5th */, 4 /* -3rd */, 0 /* -12 */ };
+
+    for (int i = 0; i < 4; ++i)
+    {
+        params.push_back(std::make_unique<juce::AudioParameterBool>(
+            juce::ParameterID { ParameterIDs::harmVoiceEnable(i), 1 },
+            "Harmony Voice " + juce::String(i + 1) + " Enable",
+            i < 2)); // Voice 1 & 2 enabled by default
+
+        params.push_back(std::make_unique<juce::AudioParameterChoice>(
+            juce::ParameterID { ParameterIDs::harmVoiceInterval(i), 1 },
+            "Harmony Voice " + juce::String(i + 1) + " Interval",
+            harmIntervalNames,
+            defaultIntervals[i]));
+
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID { ParameterIDs::harmVoiceFormant(i), 1 },
+            "Harmony Voice " + juce::String(i + 1) + " Formant",
+            juce::NormalisableRange<float>(-12.0f, 12.0f, 0.1f),
+            0.0f,
+            juce::AudioParameterFloatAttributes().withLabel("st")));
+
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID { ParameterIDs::harmVoicePan(i), 1 },
+            "Harmony Voice " + juce::String(i + 1) + " Pan",
+            juce::NormalisableRange<float>(-1.0f, 1.0f, 0.01f),
+            defaultPans[i]));
+
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID { ParameterIDs::harmVoiceLevel(i), 1 },
+            "Harmony Voice " + juce::String(i + 1) + " Level",
+            juce::NormalisableRange<float>(-36.0f, 6.0f, 0.1f),
+            -6.0f,
+            juce::AudioParameterFloatAttributes().withLabel("dB")));
+
+        params.push_back(std::make_unique<juce::AudioParameterBool>(
+            juce::ParameterID { ParameterIDs::harmVoiceSolo(i), 1 },
+            "Harmony Voice " + juce::String(i + 1) + " Solo",
+            false));
+    }
+
+    // Humanize & Realism
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID { ParameterIDs::harmNaturalize, 1 },
+        "Harmony Naturalize",
+        juce::NormalisableRange<float>(0.0f, 100.0f, 0.5f),
+        25.0f,
+        juce::AudioParameterFloatAttributes().withLabel("%")));
+
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID { ParameterIDs::harmTransition, 1 },
+        "Harmony Transition Time",
+        juce::NormalisableRange<float>(0.0f, 500.0f, 5.0f),
+        125.0f,
+        juce::AudioParameterFloatAttributes().withLabel("ms")));
+
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID { ParameterIDs::harmPitchVar, 1 },
+        "Harmony Pitch Variation",
+        juce::NormalisableRange<float>(0.0f, 50.0f, 0.5f),
+        20.0f,
+        juce::AudioParameterFloatAttributes().withLabel("cents")));
+
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID { ParameterIDs::harmTimingVar, 1 },
+        "Harmony Timing Variation",
+        juce::NormalisableRange<float>(0.0f, 80.0f, 1.0f),
+        35.0f,
+        juce::AudioParameterFloatAttributes().withLabel("ms")));
+
+    // Dynamics, EQ & Mastering Strip
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID { ParameterIDs::harmEnvAttack, 1 },
+        "Harmony Attack",
+        juce::NormalisableRange<float>(0.0f, 500.0f, 1.0f),
+        10.0f,
+        juce::AudioParameterFloatAttributes().withLabel("ms")));
+
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID { ParameterIDs::harmEnvRelease, 1 },
+        "Harmony Release",
+        juce::NormalisableRange<float>(5.0f, 1500.0f, 5.0f),
+        150.0f,
+        juce::AudioParameterFloatAttributes().withLabel("ms")));
+
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID { ParameterIDs::harmEqFreq, 1 },
+        "Harmony High-Pass EQ",
+        juce::NormalisableRange<float>(20.0f, 500.0f, 1.0f),
+        120.0f,
+        juce::AudioParameterFloatAttributes().withLabel("Hz")));
+
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID { ParameterIDs::harmGateThresh, 1 },
+        "Harmony Gate Threshold",
+        juce::NormalisableRange<float>(-80.0f, 0.0f, 0.5f),
+        -55.0f,
+        juce::AudioParameterFloatAttributes().withLabel("dB")));
+
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID { ParameterIDs::harmStereoWidth, 1 },
+        "Harmony Stereo Width",
+        juce::NormalisableRange<float>(0.0f, 200.0f, 1.0f),
+        120.0f,
+        juce::AudioParameterFloatAttributes().withLabel("%")));
+
     return { params.begin(), params.end() };
 }
 

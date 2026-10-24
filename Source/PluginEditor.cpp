@@ -10,6 +10,7 @@ ToyTuneAudioProcessorEditor::ToyTuneAudioProcessorEditor(ToyTuneAudioProcessor& 
       headerBar(audioProcessor.getAPVTS(), audioProcessor.getPresetManager()),
       retuneSpeedKnob("Retune Speed", "", false, true),
       centralPitchDisplay(audioProcessor.getTelemetry()),
+      harmonyPlayer(audioProcessor.getAPVTS()),
       humanizeKnob("Humanize", "", false, true),
       advancedDrawer(audioProcessor.getAPVTS(), audioProcessor.getScaleEngine()),
       keyboardSelector(audioProcessor.getAPVTS()),
@@ -72,11 +73,25 @@ ToyTuneAudioProcessorEditor::ToyTuneAudioProcessorEditor(ToyTuneAudioProcessor& 
     );
     addAndMakeVisible(*tuningModeSelector);
 
+    // Harmony Player Toggle Button in Upper Row
+    harmonyModeToggleBtn.setButtonText("Harmony Player");
+    harmonyModeToggleBtn.setClickingTogglesState(true);
+    harmonyModeToggleBtn.onClick = [this]()
+    {
+        isHarmonyViewActive = harmonyModeToggleBtn.getToggleState();
+        if (auto* param = audioProcessor.getAPVTS().getParameter(ParameterIDs::harmonyEnable))
+            param->setValueNotifyingHost(isHarmonyViewActive ? 1.0f : 0.0f);
+        updateMainViewMode();
+    };
+    addAndMakeVisible(harmonyModeToggleBtn);
+
     // 3. Middle Section
     retuneSpeedKnob.attachToParameter(audioProcessor.getAPVTS(), ParameterIDs::retuneSpeed);
     addAndMakeVisible(retuneSpeedKnob);
 
     addAndMakeVisible(centralPitchDisplay);
+    addChildComponent(harmonyPlayer);
+    updateMainViewMode();
 
     humanizeKnob.attachToParameter(audioProcessor.getAPVTS(), ParameterIDs::humanize);
     addAndMakeVisible(humanizeKnob);
@@ -160,6 +175,20 @@ void ToyTuneAudioProcessorEditor::updateTuningModeUI()
     }
 }
 
+void ToyTuneAudioProcessorEditor::updateMainViewMode()
+{
+    if (auto* param = audioProcessor.getAPVTS().getRawParameterValue(ParameterIDs::harmonyEnable))
+        isHarmonyViewActive = param->load() > 0.5f;
+
+    harmonyModeToggleBtn.setToggleState(isHarmonyViewActive, juce::dontSendNotification);
+    harmonyModeToggleBtn.setColour(juce::TextButton::buttonColourId, isHarmonyViewActive ? juce::Colour(0xffffffff) : juce::Colour(0xff16171b));
+    harmonyModeToggleBtn.setColour(juce::TextButton::textColourOnId, juce::Colour(0xff0a0a0d));
+    harmonyModeToggleBtn.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffa1a4b2));
+
+    centralPitchDisplay.setVisible(!isHarmonyViewActive);
+    harmonyPlayer.setVisible(isHarmonyViewActive);
+}
+
 void ToyTuneAudioProcessorEditor::timerCallback()
 {
     // Update real-time pitch analysis display
@@ -185,6 +214,7 @@ void ToyTuneAudioProcessorEditor::timerCallback()
         tuningModeSelector->updateFromParameter();
 
     updateTuningModeUI();
+    updateMainViewMode();
 }
 
 void ToyTuneAudioProcessorEditor::paint(juce::Graphics& g)
@@ -269,12 +299,16 @@ void ToyTuneAudioProcessorEditor::resized()
     rootKeyBox.setBounds(keyScaleX, upperY + labelH + 4, rootW, selectorH);
     scaleTypeBox.setBounds(keyScaleX + rootW + comboGap, upperY + labelH + 4, scaleW, selectorH);
 
-    // Right: Tuning Mode
-    const int modeW = juce::jlimit(180, 220, static_cast<int>(W * 0.16f));
-    const int modeX = bounds.getRight() - sideMargin - modeW;
-    tuningModeLabel.setBounds(modeX, upperY, modeW, labelH);
+    // Right: Tuning Mode & Harmony Player Mode Toggle
+    const int harmBtnW = juce::jlimit(114, 134, static_cast<int>(W * 0.095f));
+    const int modeW = juce::jlimit(160, 200, static_cast<int>(W * 0.14f));
+    const int rightSelectorsW = modeW + 8 + harmBtnW;
+    const int rightStartX = bounds.getRight() - sideMargin - rightSelectorsW;
+
+    harmonyModeToggleBtn.setBounds(rightStartX, upperY + labelH + 4, harmBtnW, selectorH);
+    tuningModeLabel.setBounds(rightStartX + harmBtnW + 8, upperY, modeW, labelH);
     if (tuningModeSelector != nullptr)
-        tuningModeSelector->setBounds(modeX, upperY + labelH + 4, modeW, selectorH);
+        tuningModeSelector->setBounds(rightStartX + harmBtnW + 8, upperY + labelH + 4, modeW, selectorH);
 
     // 5. Bottom Control Section (Compute bottom first so middle can fill cleanly)
     const int shelfX = sideMargin;
@@ -306,13 +340,14 @@ void ToyTuneAudioProcessorEditor::resized()
     retuneSpeedKnob.setBounds(sideMargin, midY, cardW, midH);
 
     // Right Card: Humanize
-    humanizeKnob.setBounds(modeX + modeW - cardW, midY, cardW, midH);
+    humanizeKnob.setBounds(bounds.getRight() - sideMargin - cardW, midY, cardW, midH);
 
-    // Center: Circular Pitch Display
+    // Center: Circular Pitch Display OR Harmony Player View
     const int displayPad = juce::jlimit(10, 18, static_cast<int>(W * 0.012f));
     const int displayX = sideMargin + cardW + displayPad;
-    const int displayW = (modeX + modeW - cardW) - displayPad - displayX;
+    const int displayW = (bounds.getRight() - sideMargin - cardW) - displayPad - displayX;
     centralPitchDisplay.setBounds(displayX, midY, displayW, midH);
+    harmonyPlayer.setBounds(displayX, midY, displayW, midH);
 
     // Layout inside Bottom Shelf
     const int shelfInnerPad = juce::jlimit(14, 26, static_cast<int>(shelfW * 0.02f));
