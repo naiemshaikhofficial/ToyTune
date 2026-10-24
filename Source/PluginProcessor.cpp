@@ -131,6 +131,7 @@ void ToyTuneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
     const float inGain = apvts.getRawParameterValue(ParameterIDs::inputGain)->load();
     const float outGain = apvts.getRawParameterValue(ParameterIDs::outputGain)->load();
     const float retuneSpeed = apvts.getRawParameterValue(ParameterIDs::retuneSpeed)->load();
+    const float noteTransition = apvts.getRawParameterValue(ParameterIDs::noteTransition)->load();
     const float strength = apvts.getRawParameterValue(ParameterIDs::correctionStrength)->load();
     const float tolerance = apvts.getRawParameterValue(ParameterIDs::pitchTolerance)->load();
     const float humanize = apvts.getRawParameterValue(ParameterIDs::humanize)->load();
@@ -156,6 +157,7 @@ void ToyTuneAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce:
                    inGain,
                    outGain,
                    retuneSpeed,
+                   noteTransition,
                    strength,
                    tolerance,
                    humanize,

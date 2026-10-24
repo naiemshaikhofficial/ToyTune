@@ -18,6 +18,7 @@ void PresetManager::initFactoryPresets()
     factoryPresets.push_back({
         "Default",
         0.0f,   // retuneSpeed = 0 (No auto-tune applied)
+        50.0f,  // noteTransition = 50%
         100.0f, // strength
         0.0f,   // tolerance = 0
         0.0f,   // humanize = 0
@@ -34,6 +35,7 @@ void PresetManager::initFactoryPresets()
     factoryPresets.push_back({
         "Modern Pop",
         85.0f,  // retuneSpeed (Fast, modern)
+        65.0f,  // noteTransition (Natural legato glide)
         100.0f, // strength
         5.0f,   // tolerance
         10.0f,  // humanize
@@ -50,6 +52,7 @@ void PresetManager::initFactoryPresets()
     factoryPresets.push_back({
         "Fast Pop Tune",
         95.0f,  // retuneSpeed (Very fast snap)
+        40.0f,  // noteTransition
         100.0f, // strength
         0.0f,   // tolerance
         0.0f,   // humanize
@@ -66,6 +69,7 @@ void PresetManager::initFactoryPresets()
     factoryPresets.push_back({
         "Hard Tune",
         100.0f, // retuneSpeed (Instant maximum hard snap)
+        0.0f,   // noteTransition (Instant note jump)
         100.0f, // strength
         0.0f,   // tolerance
         0.0f,   // humanize
@@ -82,6 +86,7 @@ void PresetManager::initFactoryPresets()
     factoryPresets.push_back({
         "Robot Vocal",
         100.0f, // retuneSpeed (100% hard snap)
+        0.0f,   // noteTransition (Instant note jump)
         100.0f,
         0.0f,
         0.0f,
@@ -98,6 +103,7 @@ void PresetManager::initFactoryPresets()
     factoryPresets.push_back({
         "Natural Vocal",
         50.0f,  // retuneSpeed (Smooth, melodious)
+        75.0f,  // noteTransition (Fluid natural slides)
         80.0f,  // strength
         15.0f,  // tolerance
         35.0f,  // humanize
@@ -114,6 +120,7 @@ void PresetManager::initFactoryPresets()
     factoryPresets.push_back({
         "Subtle Correction",
         25.0f,  // retuneSpeed (Gentle, subtle)
+        85.0f,  // noteTransition
         60.0f,
         25.0f,
         60.0f,
@@ -130,6 +137,7 @@ void PresetManager::initFactoryPresets()
     factoryPresets.push_back({
         "Manual Scale",
         20.0f,
+        50.0f,  // noteTransition
         100.0f,
         0.0f,
         10.0f,
@@ -169,6 +177,7 @@ void PresetManager::applyPreset(int index)
     const auto& p = factoryPresets[static_cast<size_t>(index)];
 
     setParameterValue(ParameterIDs::retuneSpeed, p.retuneSpeed);
+    setParameterValue(ParameterIDs::noteTransition, p.noteTransition);
     setParameterValue(ParameterIDs::correctionStrength, p.strength);
     setParameterValue(ParameterIDs::pitchTolerance, p.tolerance);
     setParameterValue(ParameterIDs::humanize, p.humanize);
