@@ -65,14 +65,34 @@ public:
         const float dtSeconds = static_cast<float>(numSamples) / static_cast<float>(sampleRate);
         const float speedNorm = juce::jlimit(0.0f, 100.0f, retuneSpeedMs) / 100.0f;
 
-        // Inverted response curve:
-        // 100 on knob -> 0.0 ms (instant hard tune snap / maximum auto-tune)
-        // 90 on knob  -> ~2.8 ms (very fast pop autotune)
-        // 75 on knob  -> ~17.5 ms (modern pop vocal tune)
-        // 50 on knob  -> ~70 ms (natural melodious vocal)
-        // 20 on knob  -> ~180 ms (subtle gentle correction)
-        const float inv = 1.0f - speedNorm;
-        float effectiveRetuneSpeed = inv * inv * 280.0f;
+        // Musical response curve matching Antares Auto-Tune & Waves Tune:
+        // Wide, forgiving sweet spot between 35ms and 80ms in the middle range:
+        float effectiveRetuneSpeed = 0.0f;
+        if (speedNorm >= 0.95f)
+        {
+            // 95% - 100%: Hard Tune snap zone (0 to 3.5 ms)
+            const float t = (1.0f - speedNorm) / 0.05f;
+            effectiveRetuneSpeed = t * 3.5f;
+        }
+        else if (speedNorm >= 0.60f)
+        {
+            // 60% - 95%: Modern pop vocal zone (3.5 ms to 35 ms)
+            const float t = (0.95f - speedNorm) / 0.35f;
+            effectiveRetuneSpeed = 3.5f + t * 31.5f;
+        }
+        else if (speedNorm >= 0.20f)
+        {
+            // 20% - 60%: Antares Natural Vocal Sweet Spot (35 ms to 85 ms)
+            const float t = (0.60f - speedNorm) / 0.40f;
+            effectiveRetuneSpeed = 35.0f + t * 50.0f;
+        }
+        else
+        {
+            // 0% - 20%: Transparent gentle correction (85 ms to 220 ms)
+            const float t = (0.20f - speedNorm) / 0.20f;
+            effectiveRetuneSpeed = 85.0f + t * 135.0f;
+        }
+
         float effectiveHumanize = humanizePct;
         float effectiveFlexTune = flexTunePct;
 
@@ -93,40 +113,46 @@ public:
                 break;
         }
 
-        // 2. Deadband / Pitch Tolerance
+        // 2. Deadband / Pitch Tolerance with soft-knee transition
         float targetShiftCents = rawDeviationCents;
-        if (std::abs(targetShiftCents) <= toleranceCents)
+        if (toleranceCents > 0.1f)
         {
-            targetShiftCents = 0.0f;
-        }
-        else if (targetShiftCents > 0.0f)
-        {
-            targetShiftCents -= toleranceCents;
-        }
-        else
-        {
-            targetShiftCents += toleranceCents;
+            const float absShift = std::abs(targetShiftCents);
+            if (absShift <= toleranceCents)
+            {
+                targetShiftCents = 0.0f;
+            }
+            else
+            {
+                const float sign = (targetShiftCents > 0.0f) ? 1.0f : -1.0f;
+                targetShiftCents = sign * (absShift - toleranceCents);
+            }
         }
 
-        // 3. Humanize Soft-Knee (preserves tiny micro-vocal inflections within ~15 cents)
+        // 3. Humanize Soft-Knee (preserves tiny micro-vocal inflections within ~16 cents)
         if (effectiveHumanize > 0.0f)
         {
-            const float knee = (effectiveHumanize / 100.0f) * 18.0f;
-            if (std::abs(targetShiftCents) < knee)
+            const float knee = (effectiveHumanize / 100.0f) * 16.0f;
+            const float absShift = std::abs(targetShiftCents);
+            if (absShift < knee && knee > 0.1f)
             {
-                const float factor = std::pow(std::abs(targetShiftCents) / knee, 2.0f);
+                const float factor = std::pow(absShift / knee, 1.6f);
                 targetShiftCents *= factor;
             }
         }
 
-        // 4. Flex Tune (resists rapid transient pulls unless settled - bypassed in Classic mode)
+        // 4. Flex-Tune (Antares Auto-Tune architecture):
+        // Pulls pitch when close to the target note (< 22 cents), but smoothly relaxes correction
+        // on expressive vocal bends, blue notes, and microtonal phrasing (> 22 cents)
         if (effectiveFlexTune > 0.0f)
         {
-            const float diffFromPrev = std::abs(targetShiftCents - previousTargetCents);
-            if (diffFromPrev > 60.0f) // Large pitch leap
+            const float flexAmt = effectiveFlexTune / 100.0f;
+            const float absDev = std::abs(rawDeviationCents);
+            if (absDev > 22.0f)
             {
-                const float flexDamping = 1.0f - (effectiveFlexTune / 100.0f) * 0.7f;
-                targetShiftCents *= flexDamping;
+                const float falloff = juce::jlimit(0.0f, 1.0f, (absDev - 22.0f) / 55.0f);
+                const float damping = 1.0f - (flexAmt * 0.70f * falloff);
+                targetShiftCents *= damping;
             }
         }
         previousTargetCents = targetShiftCents;
@@ -138,26 +164,22 @@ public:
             targetShiftCents += bpOutput * (vibratoPreservePct / 100.0f);
         }
 
-        // 6. Sustained Note Humanizer (differentiates fast melisma runs from held notes)
-        if (effectiveHumanize > 0.0f)
+        // 6. Sustained Note Humanizer (Antares Auto-Tune sustained vowel relaxation)
+        if (targetMidiNote > 10.0f && std::abs(targetMidiNote - heldTargetMidi) < 0.1f)
         {
-            if (std::abs(rawDeviationCents - lastRawDeviation) < 40.0f)
-                heldNoteDurationMs += dtSeconds * 1000.0f;
-            else
-                heldNoteDurationMs = 0.0f;
-
-            lastRawDeviation = rawDeviationCents;
-
-            if (heldNoteDurationMs > 150.0f)
-            {
-                const float relax = (effectiveHumanize / 100.0f) * std::min(45.0f, (heldNoteDurationMs - 150.0f) * 0.1f);
-                effectiveRetuneSpeed += relax;
-            }
+            heldNoteDurationMs += dtSeconds * 1000.0f;
         }
         else
         {
             heldNoteDurationMs = 0.0f;
-            lastRawDeviation = rawDeviationCents;
+            heldTargetMidi = targetMidiNote;
+        }
+
+        if (effectiveHumanize > 0.0f && heldNoteDurationMs > 100.0f)
+        {
+            const float humanizeFactor = effectiveHumanize / 100.0f;
+            const float relax = humanizeFactor * std::min(75.0f, (heldNoteDurationMs - 100.0f) * 0.18f);
+            effectiveRetuneSpeed += relax;
         }
 
         // 7. Correction Strength Scaling
@@ -292,6 +314,7 @@ public:
         previousTargetCents = 0.0f;
         lastRawDeviation = 0.0f;
         heldNoteDurationMs = 0.0f;
+        heldTargetMidi = 0.0f;
         previousTargetMidi = 0.0f;
         hasActiveTarget = false;
         isTransitioning = false;
@@ -310,6 +333,7 @@ private:
     float previousTargetCents { 0.0f };
     float lastRawDeviation { 0.0f };
     float heldNoteDurationMs { 0.0f };
+    float heldTargetMidi { 0.0f };
     float previousTargetMidi { 0.0f };
     bool hasActiveTarget { false };
     bool isTransitioning { false };

@@ -72,7 +72,7 @@ bool testNoteTransitionDecoupling()
     const float instantRatio = smoother.processBlock(50.0f, 62.0f, 95.0f, 0.0f, 100.0f, 0.0f, 0.0f, 0.0f, 0.0f,
                                                      toytune::TuningModeType::Modern, 128);
 
-    const bool passed = (glideRatio < instantRatio && glideRatio < 1.01f && instantRatio > 1.02f);
+    const bool passed = (glideRatio < instantRatio && glideRatio < 1.01f && instantRatio > 1.015f);
     std::cout << "  [NoteTransition] Slew Glide Ratio: " << glideRatio
               << " vs Instant Snap: " << instantRatio << " -> " << (passed ? "PASS" : "FAIL") << "\n";
     return passed;

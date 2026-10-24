@@ -34,13 +34,13 @@ void PresetManager::initFactoryPresets()
     // 1. Modern Pop
     factoryPresets.push_back({
         "Modern Pop",
-        85.0f,  // retuneSpeed (Fast, modern)
-        65.0f,  // noteTransition (Natural legato glide)
+        75.0f,  // retuneSpeed (~20 ms, tight modern pop)
+        60.0f,  // noteTransition (Natural legato glide)
         100.0f, // strength
         5.0f,   // tolerance
-        10.0f,  // humanize
-        15.0f,  // flexTune
-        0.0f,   // vibratoPreserve
+        30.0f,  // humanize (sustained note relaxation)
+        25.0f,  // flexTune (natural expressive bends)
+        25.0f,  // vibratoPreserve (natural vibrato intact)
         1,      // Modern mode
         0,      // C
         1,      // Major
@@ -51,13 +51,13 @@ void PresetManager::initFactoryPresets()
     // 2. Fast Pop Tune
     factoryPresets.push_back({
         "Fast Pop Tune",
-        95.0f,  // retuneSpeed (Very fast snap)
-        40.0f,  // noteTransition
+        90.0f,  // retuneSpeed (Snappy modern pop)
+        45.0f,  // noteTransition
         100.0f, // strength
         0.0f,   // tolerance
-        0.0f,   // humanize
-        5.0f,   // flexTune
-        0.0f,   // vibratoPreserve
+        15.0f,  // humanize
+        15.0f,  // flexTune
+        15.0f,  // vibratoPreserve
         1,      // Modern mode
         0,      // C
         1,      // Major
@@ -102,13 +102,13 @@ void PresetManager::initFactoryPresets()
     // 5. Natural Vocal
     factoryPresets.push_back({
         "Natural Vocal",
-        50.0f,  // retuneSpeed (Smooth, melodious)
-        75.0f,  // noteTransition (Fluid natural slides)
-        80.0f,  // strength
-        15.0f,  // tolerance
-        35.0f,  // humanize
-        40.0f,  // flexTune
-        0.0f,   // vibratoPreserve
+        48.0f,  // retuneSpeed (~50 ms, Antares natural vocal golden standard)
+        70.0f,  // noteTransition (Fluid natural slides)
+        90.0f,  // strength
+        10.0f,  // tolerance
+        50.0f,  // humanize (sustained note organic breathing)
+        35.0f,  // flexTune (expressive bends pass through)
+        40.0f,  // vibratoPreserve (natural vocal vibrato)
         1,      // Modern mode
         0,      // C
         0,      // Chromatic
@@ -119,13 +119,13 @@ void PresetManager::initFactoryPresets()
     // 6. Subtle Correction
     factoryPresets.push_back({
         "Subtle Correction",
-        25.0f,  // retuneSpeed (Gentle, subtle)
-        85.0f,  // noteTransition
-        60.0f,
-        25.0f,
+        25.0f,  // retuneSpeed (~80 ms, gentle transparent correction)
+        80.0f,  // noteTransition
+        75.0f,
+        20.0f,
         60.0f,
         50.0f,
-        0.0f,
+        50.0f,  // vibratoPreserve
         1,      // Modern mode
         0,
         0,      // Chromatic
