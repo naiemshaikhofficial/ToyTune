@@ -8,6 +8,10 @@
 *.suo
 *.VC.db
 
+# Binaries and installer outputs
+Output/
+*.exe
+
 # OS generated files
 .DS_Store
 Thumbs.db
