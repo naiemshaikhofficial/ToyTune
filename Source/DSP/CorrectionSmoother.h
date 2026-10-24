@@ -46,8 +46,9 @@ public:
         if (!std::isfinite(rawDeviationCents))
             rawDeviationCents = 0.0f;
 
-        // 0. If Retune Speed is 0, completely bypass pitch shift (clean original dry voice)
-        if (retuneSpeedMs <= 0.001f)
+        // 0. If Retune Speed is 0 in standard modes, completely bypass pitch shift (clean original dry voice)
+        const bool isHardOrRobot = (mode == TuningModeType::HardTune || mode == TuningModeType::Robot);
+        if (retuneSpeedMs <= 0.001f && !isHardOrRobot)
         {
             stage1Cents = 0.0f;
             smoothedPitchShiftCents = 0.0f;
@@ -85,8 +86,8 @@ public:
                 break;
         }
 
-        // 2. Deadband / Pitch Tolerance & Intensity Scaling
-        float targetShiftCents = rawDeviationCents * std::min(1.0f, speedNorm * 1.05f);
+        // 2. Deadband / Pitch Tolerance
+        float targetShiftCents = rawDeviationCents;
         if (std::abs(targetShiftCents) <= toleranceCents)
         {
             targetShiftCents = 0.0f;
@@ -100,28 +101,31 @@ public:
             targetShiftCents += toleranceCents;
         }
 
-        // 3. Humanize Soft-Knee (preserves tiny micro-vocal inflections within ~15 cents)
+        // 3. Humanize Soft-Knee (preserves delicate natural micro-inflections within ~15 cents)
         if (effectiveHumanize > 0.0f)
         {
-            const float knee = (effectiveHumanize / 100.0f) * 18.0f;
-            if (std::abs(targetShiftCents) < knee)
+            const float knee = (effectiveHumanize / 100.0f) * 16.0f;
+            if (std::abs(targetShiftCents) < knee && knee > 1e-4f)
             {
                 const float factor = std::pow(std::abs(targetShiftCents) / knee, 2.0f);
                 targetShiftCents *= factor;
             }
         }
 
-        // 4. Flex Tune (resists rapid transient pulls unless settled - bypassed in Classic mode)
+        // 4. True Flex-Tune (Distance-Gated Pull - Antares Auto-Tune architecture)
+        // Expressive bends and vocal scoops (> 20 cents) are smoothly unconstrained,
+        // while pitch locking engages gracefully as singer arrives within the target center (< 20 cents).
         if (effectiveFlexTune > 0.0f)
         {
-            const float diffFromPrev = std::abs(targetShiftCents - previousTargetCents);
-            if (diffFromPrev > 60.0f) // Large pitch leap
+            const float absDev = std::abs(targetShiftCents);
+            if (absDev > 20.0f)
             {
-                const float flexDamping = 1.0f - (effectiveFlexTune / 100.0f) * 0.7f;
-                targetShiftCents *= flexDamping;
+                const float blend = juce::jlimit(0.0f, 1.0f, (absDev - 20.0f) / 35.0f);
+                const float maxDamping = (effectiveFlexTune / 100.0f) * 0.75f;
+                const float flexFactor = 1.0f - (blend * maxDamping);
+                targetShiftCents *= flexFactor;
             }
         }
-        previousTargetCents = targetShiftCents;
 
         // 5. Advanced Vibrato Preservation (Unconditionally Stable Biquad Bandpass)
         const float dtSeconds = static_cast<float>(numSamples) / static_cast<float>(sampleRate);
@@ -131,29 +135,33 @@ public:
             targetShiftCents += bpOutput * (vibratoPreservePct / 100.0f);
         }
 
-        // 6. Sustained Note Humanizer (differentiates fast melisma runs from held notes)
+        // 6. Antares-Grade Sustained Note Humanizer
+        // Differentiates fast transition agility (runs/riffs) from held notes.
+        // Pitch residency within the target note semitone catchment (+/- 65 cents) maintains sustained state
+        // even during 5-6 Hz natural vocal vibrato (which swings +/- 40-50 cents).
         if (effectiveHumanize > 0.0f)
         {
-            if (std::abs(rawDeviationCents - lastRawDeviation) < 40.0f)
+            if (std::abs(rawDeviationCents) < 65.0f)
             {
                 heldNoteDurationMs += dtSeconds * 1000.0f;
             }
             else
             {
-                heldNoteDurationMs = 0.0f;
+                heldNoteDurationMs = std::max(0.0f, heldNoteDurationMs - (dtSeconds * 2500.0f));
             }
-            lastRawDeviation = rawDeviationCents;
 
-            if (heldNoteDurationMs > 150.0f)
+            // Once note is held (> 120 ms), smoothly relax retune speed up to +220 ms
+            // so sustained vocal vibrato and emotional tone breathe naturally without robotic clamping!
+            if (heldNoteDurationMs > 120.0f)
             {
-                const float relax = (effectiveHumanize / 100.0f) * std::min(45.0f, (heldNoteDurationMs - 150.0f) * 0.1f);
-                effectiveRetuneSpeed += relax;
+                const float progress = juce::jlimit(0.0f, 1.0f, (heldNoteDurationMs - 120.0f) / 250.0f);
+                const float maxRelax = (effectiveHumanize / 100.0f) * 220.0f;
+                effectiveRetuneSpeed += progress * maxRelax;
             }
         }
         else
         {
             heldNoteDurationMs = 0.0f;
-            lastRawDeviation = rawDeviationCents;
         }
 
         // 7. Correction Strength Scaling
